@@ -90,7 +90,7 @@ async function selectChannel(channel) {
   $('pins-toggle').setAttribute('aria-pressed','false');
   selected = channel;watchMusic(channel).catch(e=>toast(errorText(e))); const version = ++generation;
   if (subscription) { db.removeChannel(subscription); subscription = null; }
-  renderChannels(); $('channel-title').textContent = channel.name;
+  renderChannels(); renderSocial(); $('channel-title').textContent = channel.name;
   $('text-view').hidden = channel.kind !== 'text'; $('voice-view').hidden = channel.kind !== 'voice';
   $('channel-description').textContent = channel.private?'Conversa privada · só vocês dois':channel.kind === 'text' ? 'O começo de boas conversas.' : 'Voz, vídeo e boas companhias.';
   if (channel.kind === 'voice') {
@@ -271,7 +271,6 @@ $('join-call').onclick = async () => {
     await connected.connect(result.url, result.token);
     if (!session || room !== connected) { await connected.disconnect(); return; }
     await connected.startAudio();
-    const known=people.find(p=>p.id===session.user.id);if(known)await connected.localParticipant.setName(known.display_name);
     try { await connected.localParticipant.setMicrophoneEnabled(true, audioCapture()); }
     catch (error) { toast('Você entrou sem microfone. ' + errorText(error)); }
   } catch (error) { await leaveCall(); toast(errorText(error)); }
