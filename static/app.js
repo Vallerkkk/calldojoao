@@ -2,6 +2,11 @@ const $ = id => document.getElementById(id);
 let db, config, session, channels = [], selected, signup = false;
 let subscription, generation = 0, messages = new Map(), oldest, hasMore = false, loading = false;
 let room, callChannel, joining = false, shuttingDown = false;
+// Metas de qualidade: o navegador e o LiveKit podem reduzir conforme o dispositivo e a rede.
+const CAMERA_CAPTURE = {resolution: {width:1920, height:1080, frameRate:30}};
+const SCREEN_CAPTURE = {resolution: {width:1920, height:1080, frameRate:30}, contentHint:'detail'};
+const CAMERA_PUBLISH = {videoEncoding: {maxBitrate:4_500_000, maxFramerate:30}, degradationPreference:'balanced'};
+const SCREEN_PUBLISH = {screenShareEncoding: {maxBitrate:6_000_000, maxFramerate:30}, degradationPreference:'maintain-resolution'};
 let toastTimer;
 function toast(message) {
   $('toast').textContent = message; $('toast').hidden = false;
@@ -155,9 +160,22 @@ function onTrack(track, participant) {
   if (track.kind === 'video' && $('media-grid').querySelector(`[data-track="${track.sid}"]`)) return;
   const media = track.attach(); media.dataset.track = track.sid;
   if (track.kind === 'video') {
-    const figure = el('figure', 'media-tile'); figure.dataset.track = track.sid;
-    media.muted = true;
-    figure.append(media, el('figcaption', '', (participant.name || 'Participante') + (track.source === 'screen_share' ? ' · Tela' : ' · Câmera')));
+    const isScreen = track.source === 'screen_share';
+    const figure = el('figure', 'media-tile' + (isScreen ? ' media-screen' : '')); figure.dataset.track = track.sid;
+    media.muted = true; media.playsInline = true;
+    const caption = el('figcaption');
+    caption.append(el('span', '', (participant.name || 'Participante') + (isScreen ? ' · Tela' : ' · Câmera')));
+    const expand = el('button', 'expand-video', 'Tela cheia');
+    expand.type = 'button'; expand.setAttribute('aria-label', `Ver ${isScreen ? 'tela' : 'câmera'} de ${participant.name || 'Participante'} em tela cheia`);
+    expand.onclick = async () => {
+      try {
+        if (document.fullscreenElement === figure) await document.exitFullscreen();
+        else if (figure.requestFullscreen) await figure.requestFullscreen();
+        else if (media.webkitEnterFullscreen) media.webkitEnterFullscreen();
+        else toast('Este navegador não oferece tela cheia para este vídeo.');
+      } catch (error) { toast(errorText(error)); }
+    };
+    caption.append(expand); figure.append(media, caption);
     $('media-grid').append(figure);
   } else { media.dataset.remoteAudio = 'true'; document.body.append(media); }
 }
@@ -202,10 +220,22 @@ $('join-call').onclick = async () => {
     if (!fresh) throw Error('Sua sessão expirou. Entre novamente.');
     const response = await fetch(`/api/channels/${target.id}/join`, {method:'POST', headers:{Authorization:`Bearer ${fresh.access_token}`}});
     const result = await response.json(); if (!response.ok) throw Error(result.detail || 'Não foi possível entrar.');
-    const {Room, RoomEvent} = await import('https://cdn.jsdelivr.net/npm/livekit-client@2.15.6/+esm');
+    const {Room, RoomEvent, VideoPresets, ScreenSharePresets} = await import('https://cdn.jsdelivr.net/npm/livekit-client@2.15.6/+esm');
     if (!session || shuttingDown) return;
     await leaveCall();
-    const connected = new Room({adaptiveStream:true, dynacast:true}); room = connected; callChannel = target;
+    const connected = new Room({
+      adaptiveStream: {pixelDensity:'screen'},
+      dynacast:true,
+      videoCaptureDefaults:CAMERA_CAPTURE,
+      publishDefaults: {
+        simulcast:true,
+        videoCodec:'vp8',
+        videoEncoding:CAMERA_PUBLISH.videoEncoding,
+        screenShareEncoding:SCREEN_PUBLISH.screenShareEncoding,
+        videoSimulcastLayers:[VideoPresets.h360, VideoPresets.h720],
+        screenShareSimulcastLayers:[ScreenSharePresets.h720fps15],
+      },
+    }); room = connected; callChannel = target;
     connected.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => onTrack(track, participant)).on(RoomEvent.TrackUnsubscribed, removeTrack)
       .on(RoomEvent.LocalTrackPublished, publication => { if (publication.track?.kind === 'video') onTrack(publication.track, connected.localParticipant); updateCallUI(); })
       .on(RoomEvent.LocalTrackUnpublished, publication => {
@@ -229,7 +259,12 @@ $('leave-call').onclick = () => leaveCall();
 for (const [id, property, method] of [['mic','isMicrophoneEnabled','setMicrophoneEnabled'],['camera','isCameraEnabled','setCameraEnabled'],['screen','isScreenShareEnabled','setScreenShareEnabled']]) {
   $(id).onclick = async () => {
     if (!room) return; $(id).disabled = true;
-    try { await room.localParticipant[method](!room.localParticipant[property]); }
+    try {
+      const enabled = !room.localParticipant[property];
+      if (id === 'camera') await room.localParticipant.setCameraEnabled(enabled, CAMERA_CAPTURE, CAMERA_PUBLISH);
+      else if (id === 'screen') await room.localParticipant.setScreenShareEnabled(enabled, SCREEN_CAPTURE, SCREEN_PUBLISH);
+      else await room.localParticipant[method](enabled);
+    }
     catch (error) { toast(errorText(error)); }
     finally { $(id).disabled = false; updateCallUI(); }
   };
