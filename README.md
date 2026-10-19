@@ -35,7 +35,7 @@ Após mudar `.env`, reinicie o servidor. Para atualizar dependências de um ambi
 
 ## Estrutura e acesso
 
-Esta é uma primeira versão com **uma comunidade compartilhada**: qualquer conta cadastrada pode ler todos os canais, conversar e entrar nas salas. Não existem comunidades privadas, convites, cargos, moderação, anexos, recuperação de senha ou gravação de chamadas nesta versão. Crie canais adicionais pelo Supabase, preenchendo `name`, `kind` (`text` ou `voice`) e `position`; recarregue a página depois.
+Esta é uma primeira versão com **uma comunidade compartilhada**: qualquer conta cadastrada pode ler todos os canais, conversar e entrar nas salas. A versão Social adiciona amizades, conversas privadas, anexos pelo Drive e criação de canais pela interface. Ainda não inclui múltiplas comunidades, convites, cargos, moderação, recuperação de senha ou gravação de chamadas. Também é possível criar canais pelo Supabase, preenchendo `name`, `kind` (`text` ou `voice`) e `position`; recarregue a página depois.
 
 O navegador usa a chave pública e o JWT do usuário; as políticas RLS controlam o acesso. O Python valida o JWT no Supabase e consulta o canal com o mesmo JWT antes de emitir um token LiveKit de dez minutos, limitado à sala. Nenhuma chave administrativa do Supabase é necessária. O prazo do token limita a entrada inicial; ele não expulsa automaticamente participantes já conectados.
 
@@ -58,3 +58,14 @@ Microfone, câmera e tela precisam de contexto seguro: `localhost`/`127.0.0.1` p
 Execute os testes com `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`.
 
 Referências: [Supabase Realtime](https://supabase.com/docs/guides/realtime/postgres-changes), [tokens LiveKit](https://docs.livekit.io/frontends/reference/tokens-grants/), [tela no LiveKit](https://docs.livekit.io/transport/media/screenshare/).
+
+## Qualidade de vídeo
+
+A câmera solicita até 1920×1080 a 30 fps, com teto de 4,5 Mbps. O compartilhamento de tela solicita até 1920×1080 a 30 fps, com teto de 6 Mbps e prioridade para preservar a resolução de textos. As metas dependem do navegador, câmera, capacidade do computador e da conexão. O LiveKit continua adaptando a transmissão e publica camadas menores para participantes com menos banda. As camadas adicionais de simulcast também consomem upload.
+
+A tela compartilhada usa toda a largura da área de vídeo. O botão **Tela cheia** permite ampliar cada transmissão; a recepção adaptativa considera o tamanho da exibição e a densidade de pixels do monitor. Para aplicar os novos parâmetros, atualize a página, saia e entre novamente na chamada e reative a câmera ou a tela.
+
+
+## Órbita Social
+
+Interface renovada, amigos, mensagens e chamadas privadas, reações, perfil, redução de ruído e integração de arquivos/música com Google Drive. Execute a versão atual de `supabase.sql` para instalar as novas tabelas sem apagar o histórico. Veja `GOOGLE_DRIVE.md` para ativar os arquivos e o player compartilhado.

@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from livekit import api
+from integrations import install, drive_configured, MAX_UPLOAD
 
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / '.env')
@@ -42,6 +43,7 @@ def config():
     return {'supabaseUrl': s['SUPABASE_URL'],
             'supabaseKey': s['SUPABASE_PUBLISHABLE_KEY'],
             'configured': ready,
+            'driveConfigured': drive_configured(), 'uploadLimit': MAX_UPLOAD,
             'callsConfigured': all(s[k] for k in ('LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'))}
 
 
@@ -86,10 +88,17 @@ async def join(channel_id: UUID, identity=Depends(current_user)):
         raise HTTPException(404, 'Canal inexistente ou sem acesso.')
     if channels[0]['kind'] != 'voice':
         raise HTTPException(400, 'Este canal é de texto.')
+    return make_token(user, f'channel-{channel_id}')
+
+
+def make_token(user, room_name):
+    s = settings()
+    if not all(s[k] for k in ('LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET')):
+        raise HTTPException(503, 'As chamadas ainda não foram configuradas.')
     name = str(user.get('user_metadata', {}).get('display_name') or 'Participante')[:50]
     token = (api.AccessToken(s['LIVEKIT_API_KEY'], s['LIVEKIT_API_SECRET'])
         .with_identity(user['id']).with_name(name).with_ttl(timedelta(minutes=10))
-        .with_grants(api.VideoGrants(room_join=True, room=f'channel-{channel_id}',
+        .with_grants(api.VideoGrants(room_join=True, room=room_name,
             can_publish=True, can_subscribe=True, can_publish_data=False)).to_jwt())
     return JSONResponse({'url': s['LIVEKIT_URL'], 'token': token})
 
@@ -98,5 +107,7 @@ async def join(channel_id: UUID, identity=Depends(current_user)):
 def index():
     return FileResponse(ROOT / 'static' / 'index.html')
 
+
+install(app, current_user, settings, make_token)
 
 app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')
