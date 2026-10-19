@@ -65,4 +65,184 @@ do $$ begin
     alter publication supabase_realtime add table public.messages;
   end if;
 end $$;
+-- Evolução aditiva: preserva contas, canais e histórico existentes.
+alter table public.profiles add column if not exists username text not null default ('orbiter_' || substr(replace(gen_random_uuid()::text,'-',''),1,12));
+alter table public.profiles add column if not exists bio text not null default '' check (char_length(bio)<=160);
+alter table public.profiles add column if not exists avatar_color text not null default '#8b80ff' check (avatar_color ~ '^#[0-9a-fA-F]{6}$');
+create unique index if not exists profiles_username on public.profiles(lower(username));
+alter table public.profiles drop constraint if exists profiles_username_format;
+alter table public.profiles add constraint profiles_username_format check(username ~ '^[a-z0-9_]{3,24}$');
+grant update(display_name,username,bio,avatar_color) on public.profiles to authenticated;
+drop policy if exists profiles_self_update on public.profiles;
+create policy profiles_self_update on public.profiles for update to authenticated using(id=(select auth.uid())) with check(id=(select auth.uid()));
+
+alter table public.channels add column if not exists created_by uuid references public.profiles(id) default auth.uid();
+grant insert(name,kind,position) on public.channels to authenticated;
+drop policy if exists channels_create on public.channels;
+create policy channels_create on public.channels for insert to authenticated with check(created_by=(select auth.uid()) and char_length(name) between 1 and 40);
+
+create table if not exists public.friendships(
+ id uuid primary key default gen_random_uuid(),
+ requester_id uuid not null references public.profiles(id) on delete cascade,
+ recipient_id uuid not null references public.profiles(id) on delete cascade,
+ status text not null default 'pending' check(status in ('pending','accepted')),
+ created_at timestamptz not null default now(), check(requester_id<>recipient_id)
+);
+create unique index if not exists friendships_pair on public.friendships(least(requester_id,recipient_id),greatest(requester_id,recipient_id));
+create index if not exists friendships_recipient on public.friendships(recipient_id,status);
+create index if not exists friendships_requester on public.friendships(requester_id,status);
+alter table public.friendships enable row level security;
+revoke all on public.friendships from anon,authenticated;
+grant select,delete on public.friendships to authenticated;
+grant insert(requester_id,recipient_id),update(status) on public.friendships to authenticated;
+drop policy if exists friendship_read on public.friendships;
+create policy friendship_read on public.friendships for select to authenticated using((select auth.uid()) in (requester_id,recipient_id));
+drop policy if exists friendship_request on public.friendships;
+create policy friendship_request on public.friendships for insert to authenticated with check(requester_id=(select auth.uid()) and status='pending');
+drop policy if exists friendship_accept on public.friendships;
+create policy friendship_accept on public.friendships for update to authenticated using(recipient_id=(select auth.uid()) and status='pending') with check(recipient_id=(select auth.uid()) and status='accepted');
+drop policy if exists friendship_remove on public.friendships;
+create policy friendship_remove on public.friendships for delete to authenticated using((select auth.uid()) in (requester_id,recipient_id));
+
+create table if not exists public.conversations(
+ id uuid primary key default gen_random_uuid(),
+ user_a uuid not null references public.profiles(id) on delete cascade,
+ user_b uuid not null references public.profiles(id) on delete cascade,
+ created_at timestamptz not null default now(),check(user_a<user_b),unique(user_a,user_b)
+);
+create index if not exists conversations_b on public.conversations(user_b);
+alter table public.conversations enable row level security;
+revoke all on public.conversations from anon,authenticated;
+grant select on public.conversations to authenticated;
+grant insert(user_a,user_b) on public.conversations to authenticated;
+drop policy if exists conversation_members on public.conversations;
+create policy conversation_members on public.conversations for select to authenticated using((select auth.uid()) in (user_a,user_b));
+drop policy if exists conversation_create on public.conversations;
+create policy conversation_create on public.conversations for insert to authenticated with check(
+ (select auth.uid()) in(user_a,user_b) and exists(select 1 from public.friendships f where f.status='accepted' and least(f.requester_id,f.recipient_id)=user_a and greatest(f.requester_id,f.recipient_id)=user_b)
+);
+
+create table if not exists public.attachments(
+ id uuid primary key default gen_random_uuid(),owner_id uuid not null references public.profiles(id),
+ channel_id uuid references public.channels(id) on delete cascade,
+ conversation_id uuid references public.conversations(id) on delete cascade,
+ file_id text not null unique,name text not null check(char_length(name) between 1 and 180),
+ mime_type text not null,size bigint not null check(size between 1 and 26214400),
+ storage_proof text not null,created_at timestamptz not null default now(),
+ check(num_nonnulls(channel_id,conversation_id)=1)
+);
+create index if not exists attachments_channel on public.attachments(channel_id,created_at);
+create index if not exists attachments_conversation on public.attachments(conversation_id,created_at);
+alter table public.attachments enable row level security;
+revoke all on public.attachments from anon,authenticated;
+grant select on public.attachments to authenticated;
+grant insert(owner_id,channel_id,conversation_id,file_id,name,mime_type,size,storage_proof) on public.attachments to authenticated;
+drop policy if exists attachment_scope_read on public.attachments;
+create policy attachment_scope_read on public.attachments for select to authenticated using(
+ channel_id is not null or exists(select 1 from public.conversations c where c.id=conversation_id)
+);
+drop policy if exists attachment_scope_insert on public.attachments;
+create policy attachment_scope_insert on public.attachments for insert to authenticated with check(owner_id=(select auth.uid()) and (
+ exists(select 1 from public.channels c where c.id=channel_id) or exists(select 1 from public.conversations c where c.id=conversation_id)
+));
+-- storage_proof é validada pelo servidor antes de acessar o Drive: um cliente não pode forjar um file_id.
+
+alter table public.messages add column if not exists attachment_id uuid references public.attachments(id);
+alter table public.messages add column if not exists pinned boolean not null default false;
+grant insert(attachment_id),update(content,pinned),delete on public.messages to authenticated;
+drop policy if exists messages_insert on public.messages;
+create policy messages_insert on public.messages for insert to authenticated with check(author_id=(select auth.uid()) and exists(select 1 from public.channels c where c.id=channel_id and c.kind='text') and (attachment_id is null or exists(select 1 from public.attachments a where a.id=attachment_id and a.owner_id=author_id and a.channel_id=messages.channel_id)));
+drop policy if exists messages_own_edit on public.messages;
+create policy messages_own_edit on public.messages for update to authenticated using(author_id=(select auth.uid())) with check(author_id=(select auth.uid()));
+drop policy if exists messages_own_delete on public.messages;
+create policy messages_own_delete on public.messages for delete to authenticated using(author_id=(select auth.uid()));
+
+create table if not exists public.direct_messages(
+ id uuid primary key default gen_random_uuid(),conversation_id uuid not null references public.conversations(id) on delete cascade,
+ author_id uuid not null references public.profiles(id),content text not null check(char_length(trim(content)) between 1 and 4000),
+ attachment_id uuid references public.attachments(id),pinned boolean not null default false,created_at timestamptz not null default now()
+);
+create index if not exists direct_messages_history on public.direct_messages(conversation_id,created_at desc,id desc);
+alter table public.direct_messages enable row level security;
+revoke all on public.direct_messages from anon,authenticated;
+grant select,delete on public.direct_messages to authenticated;
+grant insert(conversation_id,author_id,content,attachment_id),update(content,pinned) on public.direct_messages to authenticated;
+drop policy if exists direct_members_read on public.direct_messages;
+create policy direct_members_read on public.direct_messages for select to authenticated using(exists(select 1 from public.conversations c where c.id=conversation_id));
+drop policy if exists direct_members_insert on public.direct_messages;
+create policy direct_members_insert on public.direct_messages for insert to authenticated with check(author_id=(select auth.uid()) and exists(select 1 from public.conversations c join public.friendships f on least(f.requester_id,f.recipient_id)=c.user_a and greatest(f.requester_id,f.recipient_id)=c.user_b where c.id=conversation_id and f.status='accepted') and (attachment_id is null or exists(select 1 from public.attachments a where a.id=attachment_id and a.owner_id=author_id and a.conversation_id=direct_messages.conversation_id)));
+drop policy if exists direct_own_edit on public.direct_messages;
+create policy direct_own_edit on public.direct_messages for update to authenticated using(author_id=(select auth.uid())) with check(author_id=(select auth.uid()));
+drop policy if exists direct_own_delete on public.direct_messages;
+create policy direct_own_delete on public.direct_messages for delete to authenticated using(author_id=(select auth.uid()));
+
+create table if not exists public.reactions(
+ id uuid primary key default gen_random_uuid(),message_id uuid references public.messages(id) on delete cascade,
+ direct_message_id uuid references public.direct_messages(id) on delete cascade,user_id uuid not null references public.profiles(id),
+ emoji text not null check(emoji in('👍','❤️','😂','🎉','🔥','👀')),check(num_nonnulls(message_id,direct_message_id)=1)
+);
+create unique index if not exists reactions_message_unique on public.reactions(message_id,user_id,emoji) where message_id is not null;
+create unique index if not exists reactions_direct_unique on public.reactions(direct_message_id,user_id,emoji) where direct_message_id is not null;
+alter table public.reactions enable row level security;
+revoke all on public.reactions from anon,authenticated;
+grant select,delete on public.reactions to authenticated;
+grant insert(message_id,direct_message_id,user_id,emoji) on public.reactions to authenticated;
+drop policy if exists reaction_read on public.reactions;
+create policy reaction_read on public.reactions for select to authenticated using(exists(select 1 from public.messages m where m.id=message_id) or exists(select 1 from public.direct_messages m where m.id=direct_message_id));
+drop policy if exists reaction_insert on public.reactions;
+create policy reaction_insert on public.reactions for insert to authenticated with check(user_id=(select auth.uid()) and (exists(select 1 from public.messages m where m.id=message_id) or exists(select 1 from public.direct_messages m where m.id=direct_message_id)));
+drop policy if exists reaction_delete on public.reactions;
+create policy reaction_delete on public.reactions for delete to authenticated using(user_id=(select auth.uid()));
+
+create table if not exists public.call_events(
+ id uuid primary key default gen_random_uuid(),conversation_id uuid not null references public.conversations(id) on delete cascade,
+ caller_id uuid not null references public.profiles(id),created_at timestamptz not null default now()
+);
+create index if not exists call_events_conversation on public.call_events(conversation_id,created_at desc);
+alter table public.call_events enable row level security;
+revoke all on public.call_events from anon,authenticated;
+grant select on public.call_events to authenticated;
+grant insert(conversation_id,caller_id) on public.call_events to authenticated;
+drop policy if exists call_event_read on public.call_events;
+create policy call_event_read on public.call_events for select to authenticated using(exists(select 1 from public.conversations c where c.id=conversation_id));
+drop policy if exists call_event_insert on public.call_events;
+create policy call_event_insert on public.call_events for insert to authenticated with check(caller_id=(select auth.uid()) and exists(select 1 from public.conversations c join public.friendships f on least(f.requester_id,f.recipient_id)=c.user_a and greatest(f.requester_id,f.recipient_id)=c.user_b where c.id=conversation_id and f.status='accepted'));
+
+create table if not exists public.music_state(
+ id uuid primary key default gen_random_uuid(),channel_id uuid references public.channels(id) on delete cascade,
+ conversation_id uuid references public.conversations(id) on delete cascade,attachment_id uuid not null references public.attachments(id),
+ playing boolean not null default false,position double precision not null default 0 check(position between 0 and 86400),
+ updated_by uuid not null references public.profiles(id),updated_at timestamptz not null default now(),check(num_nonnulls(channel_id,conversation_id)=1)
+);
+create unique index if not exists music_channel_unique on public.music_state(channel_id);
+create unique index if not exists music_direct_unique on public.music_state(conversation_id);
+alter table public.music_state enable row level security;
+revoke all on public.music_state from anon,authenticated;
+grant select on public.music_state to authenticated;
+grant insert(channel_id,conversation_id,attachment_id,playing,position,updated_by),update(attachment_id,playing,position,updated_by) on public.music_state to authenticated;
+drop policy if exists music_read on public.music_state;
+create policy music_read on public.music_state for select to authenticated using(channel_id is not null or exists(select 1 from public.conversations c where c.id=conversation_id));
+drop policy if exists music_insert on public.music_state;
+create policy music_insert on public.music_state for insert to authenticated with check(updated_by=(select auth.uid()) and exists(select 1 from public.attachments a where a.id=attachment_id and a.mime_type like 'audio/%' and (a.channel_id=music_state.channel_id or a.conversation_id=music_state.conversation_id)));
+drop policy if exists music_update on public.music_state;
+create policy music_update on public.music_state for update to authenticated using(channel_id is not null or exists(select 1 from public.conversations c where c.id=conversation_id)) with check(updated_by=(select auth.uid()) and exists(select 1 from public.attachments a where a.id=attachment_id and a.mime_type like 'audio/%' and (a.channel_id=music_state.channel_id or a.conversation_id=music_state.conversation_id)));
+create schema if not exists orbita_private;
+create or replace function orbita_private.touch_music() returns trigger language plpgsql set search_path='' as $$ begin new.updated_at=now(); return new; end $$;
+drop trigger if exists music_timestamp on public.music_state;
+create trigger music_timestamp before update on public.music_state for each row execute function orbita_private.touch_music();
+
+drop policy if exists orbita_presence_read on realtime.messages;
+create policy orbita_presence_read on realtime.messages for select to authenticated using((select realtime.topic())='community:main');
+drop policy if exists orbita_presence_write on realtime.messages;
+create policy orbita_presence_write on realtime.messages for insert to authenticated with check((select realtime.topic())='community:main');
+
+do $$ declare tablename_to_add text; begin
+ foreach tablename_to_add in array array['friendships','conversations','direct_messages','reactions','call_events','music_state','attachments','profiles','channels'] loop
+  if not exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename=tablename_to_add) then
+   execute format('alter publication supabase_realtime add table public.%I',tablename_to_add);
+  end if;
+ end loop;
+end $$;
+
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
 commit;

@@ -1,0 +1,52 @@
+import os
+import unittest
+from unittest.mock import patch
+import httpx
+import jwt
+from fastapi.testclient import TestClient
+import app
+from integrations import storage_proof, MAX_UPLOAD
+
+USER='22222222-2222-4222-8222-222222222222'
+OTHER='33333333-3333-4333-8333-333333333333'
+TARGET='11111111-1111-4111-8111-111111111111'
+ENV={'SUPABASE_URL':'https://example.supabase.co','SUPABASE_PUBLISHABLE_KEY':'public','LIVEKIT_URL':'wss://example.livekit.cloud','LIVEKIT_API_KEY':'test-key','LIVEKIT_API_SECRET':'test-secret-32-characters-long-1234', 'GOOGLE_CLIENT_ID':'','GOOGLE_CLIENT_SECRET':'','GOOGLE_DRIVE_REFRESH_TOKEN':'','GOOGLE_DRIVE_FOLDER_ID':''}
+
+class IntegrationTests(unittest.TestCase):
+ def setUp(self):
+  self.env=patch.dict(os.environ,ENV);self.env.start();self.client=TestClient(app.app)
+ def tearDown(self):self.env.stop()
+ def remote(self,member=True,friend=True,record=None):
+  async def get(_client,url,**kwargs):
+   if url.endswith('/auth/v1/user'):data={'id':USER}
+   elif url.endswith('/conversations'):data=[{'id':TARGET,'user_a':USER if member else OTHER,'user_b':OTHER}]
+   elif url.endswith('/friendships'):data=[{'id':TARGET}] if friend else []
+   elif url.endswith('/attachments'):data=[record] if record else []
+   elif url.endswith('/channels'):data=[{'id':TARGET,'kind':'text'}]
+   else:raise AssertionError('Unexpected external request: '+url)
+   return httpx.Response(200,json=data)
+  return patch.object(httpx.AsyncClient,'get',get)
+ def post(self,path,**kwargs):return self.client.post(path,headers={'Authorization':'Bearer test'},**kwargs)
+ def test_non_member_cannot_join_even_if_upstream_is_wrong(self):
+  with self.remote(member=False):self.assertEqual(self.post(f'/api/conversations/{TARGET}/join').status_code,404)
+ def test_non_friend_cannot_join(self):
+  with self.remote(friend=False):self.assertEqual(self.post(f'/api/conversations/{TARGET}/join').status_code,403)
+ def test_private_token_room_is_scoped(self):
+  with self.remote():response=self.post(f'/api/conversations/{TARGET}/join')
+  token=jwt.decode(response.json()['token'],ENV['LIVEKIT_API_SECRET'],algorithms=['HS256'])
+  self.assertEqual(token['video']['room'],'direct-'+TARGET)
+ def test_drive_requires_configuration(self):
+  with self.remote():response=self.post(f'/api/attachments?target_kind=channel&target_id={TARGET}',content=b'test')
+  self.assertEqual(response.status_code,503)
+ def test_tampered_file_metadata_never_reaches_google(self):
+  record={'owner_id':USER,'channel_id':TARGET,'conversation_id':None,'file_id':'owned-file','name':'original.txt','size':4,'mime_type':'text/plain'}
+  record['storage_proof']=storage_proof(record);record['file_id']='somebody-elses-file'
+  with self.remote(record=record):response=self.client.get(f'/api/attachments/{TARGET}/download',headers={'Authorization':'Bearer test'})
+  self.assertEqual(response.status_code,403)
+ def test_oversized_upload_rejected_before_oauth(self):
+  with patch.dict(os.environ,{k:'configured' for k in ('GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','GOOGLE_DRIVE_REFRESH_TOKEN','GOOGLE_DRIVE_FOLDER_ID')}),self.remote():
+   response=self.client.post(f'/api/attachments?target_kind=channel&target_id={TARGET}',headers={'Authorization':'Bearer test','Content-Length':str(MAX_UPLOAD+1)},content=b'x')
+  self.assertEqual(response.status_code,413)
+ def test_google_credentials_are_not_exposed(self):
+  with patch.dict(os.environ,{'GOOGLE_CLIENT_SECRET':'do-not-disclose','GOOGLE_DRIVE_REFRESH_TOKEN':'never-return-token'}):response=self.client.get('/api/config')
+  self.assertNotIn('do-not-disclose',response.text);self.assertNotIn('never-return-token',response.text)
