@@ -5,9 +5,9 @@ A versão Órbita Social usa uma pasta central do proprietário. O Supabase guar
 ## Configuração necessária
 
 1. No [Google Cloud](https://console.cloud.google.com/), selecione ou crie um projeto e ative a **Google Drive API**.
-2. Configure o consentimento OAuth para o aplicativo e crie um cliente OAuth para aplicação Web. Cadastre o endereço de retorno da ferramenta que você usará para obter a autorização.
-3. Autorize sua própria conta com acesso offline e o escopo `https://www.googleapis.com/auth/drive.file`. Esse escopo permite acesso aos arquivos criados pelo aplicativo. Guarde o `refresh_token` no servidor.
-4. Crie a pasta usando a mesma autorização do aplicativo, ou selecione uma pasta pelo Google Picker com o mesmo cliente OAuth. Uma pasta criada manualmente e apenas copiada pelo ID pode não estar acessível com o escopo `drive.file`.
+2. Configure o consentimento OAuth do aplicativo, adicione sua conta como usuário de teste se necessário e crie um cliente OAuth do tipo **Aplicativo da Web**. Cadastre o retorno `http://127.0.0.1:8765/callback`.
+3. Na pasta do site, execute `.\.venv\Scripts\python.exe conectar_drive.py`. Informe o Client ID e o Client secret diretamente no terminal local. O segredo fica oculto durante a digitação. Não envie esses valores em conversas.
+4. O navegador abrirá a autorização Google. Autorize sua própria conta. A ferramenta usa o escopo `drive.file`, cria a pasta **Órbita · Arquivos** com essa autorização e salva as quatro variáveis Google no `.env` local. Uma pasta criada manualmente e apenas copiada pelo ID pode não estar acessível com esse escopo. Reinicie o servidor para usar o Drive localmente.
 5. No Render, abra o serviço **orbita → Environment** e adicione:
 
 ```dotenv
