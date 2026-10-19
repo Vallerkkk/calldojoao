@@ -34,10 +34,13 @@ Opcionais: `STORAGE_SIGNING_KEY` fixa uma chave exclusiva de assinatura dos regi
 - Câmera e tela com metas de 1080p/30, adaptação à rede e tela cheia.
 - Arquivos no Drive e player compartilhado com pausa, reprodução, posição sincronizada e volume local. A sincronização é aproximada; cada navegador precisa permitir a reprodução de áudio.
 
-O FlaviBot funciona no Discord e não é integrado ao LiveKit. O player próprio foi a alternativa escolhida. Esta versão cobre as funções descritas acima; não implementa todas as funções, moderação, cargos, múltiplos servidores, aplicativos ou escala do Discord. A fixação de mensagens está restrita ao próprio autor. Remover uma amizade impede novas mensagens e novas entradas em chamadas, mas não desconecta uma chamada já em andamento. A pesquisa filtra as mensagens carregadas; use o botão de histórico para carregar mais.
+O FlaviBot funciona no Discord e não é integrado ao LiveKit. O player próprio foi a alternativa escolhida. Esta versão cobre as funções descritas acima; inclui agora comunidades públicas, enquetes, respostas e administração do site. Ainda não implementa cargos configuráveis, comunidades privadas, aplicativos ou escala do Discord. Autores podem fixar suas mensagens; administradores também moderam mensagens públicas. Remover uma amizade impede novas mensagens e novas entradas em chamadas, mas não desconecta uma chamada já em andamento. A pesquisa filtra as mensagens carregadas; use o botão de histórico para carregar mais.
 
 ## Verificação
 
 Execute `python -m unittest discover -s tests -v` na pasta do projeto. Os testes cobrem autenticação, escopo dos tokens de chamada, bloqueio de terceiros, amizade obrigatória, limites de upload, assinatura dos arquivos e proteção das credenciais. A autorização e a transferência real do Drive precisam ser testadas depois que as credenciais Google forem configuradas.
 
 Referências: [OAuth para aplicações Web](https://developers.google.com/identity/protocols/oauth2/web-server), [uploads do Drive](https://developers.google.com/workspace/drive/api/guides/manage-uploads), [escopos do Drive](https://developers.google.com/workspace/drive/api/guides/api-specific-auth).
+
+
+A interface integrada permite gerar uma cópia JSON dos dados públicos da comunidade pelo painel de administração. Leia `ATUALIZACAO_FRONTEND.md` para o escopo dessa cópia e os detalhes de Google Cloud.

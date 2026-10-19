@@ -35,7 +35,7 @@ Após mudar `.env`, reinicie o servidor. Para atualizar dependências de um ambi
 
 ## Estrutura e acesso
 
-Esta é uma primeira versão com **uma comunidade compartilhada**: qualquer conta cadastrada pode ler todos os canais, conversar e entrar nas salas. A versão Social adiciona amizades, conversas privadas, anexos pelo Drive e criação de canais pela interface. Ainda não inclui múltiplas comunidades, convites, cargos, moderação, recuperação de senha ou gravação de chamadas. Também é possível criar canais pelo Supabase, preenchendo `name`, `kind` (`text` ou `voice`) e `position`; recarregue a página depois.
+Esta é uma primeira versão com **uma comunidade compartilhada**: qualquer conta cadastrada pode ler todos os canais, conversar e entrar nas salas. A versão Social adiciona amizades, conversas privadas, anexos pelo Drive e criação de canais pela interface. A interface integrada inclui múltiplas comunidades públicas, enquetes, respostas e moderação por administradores. Ainda não inclui comunidades privadas com convites, cargos configuráveis, recuperação de senha ou gravação de chamadas. Também é possível criar canais pelo Supabase, preenchendo `name`, `kind` (`text` ou `voice`) e `position`; recarregue a página depois.
 
 O navegador usa a chave pública e o JWT do usuário; as políticas RLS controlam o acesso. O Python valida o JWT no Supabase e consulta o canal com o mesmo JWT antes de emitir um token LiveKit de dez minutos, limitado à sala. Nenhuma chave administrativa do Supabase é necessária. O prazo do token limita a entrada inicial; ele não expulsa automaticamente participantes já conectados.
 
@@ -69,3 +69,8 @@ A tela compartilhada usa toda a largura da área de vídeo. O botão **Tela chei
 ## Órbita Social
 
 Interface renovada, amigos, mensagens e chamadas privadas, reações, perfil, redução de ruído e integração de arquivos/música com Google Drive. Execute a versão atual de `supabase.sql` para instalar as novas tabelas sem apagar o histórico. Veja `GOOGLE_DRIVE.md` para ativar os arquivos e o player compartilhado.
+
+
+## Frontend integrado e administração
+
+A interface fornecida em DEEPSEEK/INDEX.html foi integrada aos dados reais. Comunidades, enquetes, respostas, status e administração estão descritos em `ATUALIZACAO_FRONTEND.md`. O compartilhamento de tela agora solicita áudio, conforme suporte e autorização do navegador. O Drive pode receber cópias JSON dos dados públicos da comunidade após a autorização Google. O Firebase Performance Monitoring aguarda a configuração pública do projeto e a ativação opcional do usuário.
