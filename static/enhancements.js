@@ -4,6 +4,7 @@ export function initEnhancements(context) {
   const { el, button, toast, checked, showDialog, inputField } = context;
   const $ = id => document.getElementById(id), state = context.state;
   const jsonPost = async (path, body = {}) => (await context.apiFetch(path, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) })).json();
+  let sessionVersion=0,channelVersion=0,threadReadVersion=0,installTask;
   let inbox, typing, subscribedUser, typingTimer, idle = false, idleTimer, lastTyped = 0, registration, installPrompt;
   let unread = {}, panel, panelKind, threadRoot, threadTarget, threadVersion = 0, threadCursor, threadMore;
   let wakeLock, wakeRequest = false, watchRoom, watchEvents, audioContext, watchState, player, playerReady = false, playerTask, suppressPlayer = false, focusedLink;
@@ -51,8 +52,13 @@ export function initEnhancements(context) {
   document.addEventListener('pointerdown', () => { try { audioContext ||= new (window.AudioContext || window.webkitAudioContext)(); audioContext.resume().catch(() => {}); } catch {} }, { once:true });
 
   async function installPWA() {
-    if (!('serviceWorker' in navigator)) return;
-    try { registration = await navigator.serviceWorker.register('/sw.js', {scope:'/'}); } catch { /* Plain HTTP LAN connections cannot install a PWA. */ }
+    if(!('serviceWorker' in navigator))return;
+    if(installTask)return installTask;
+    installTask=(async()=>{let timer;try{
+      await navigator.serviceWorker.register('/sw.js',{scope:'/'});
+      registration=await Promise.race([navigator.serviceWorker.ready,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Instalação indisponível.')),10000);})]);
+    }catch{registration=undefined;}finally{clearTimeout(timer);installTask=undefined;}})();
+    return installTask;
   }
   installPWA();
   window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); installPrompt = event; });
@@ -73,54 +79,62 @@ export function initEnhancements(context) {
     const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:key});
     await jsonPost('/api/push/subscribe', subscription.toJSON()); toast('Push ativado: menções e DMs podem chegar com o app fechado.');
   }
-  async function disablePush() {
+  async function disablePush(quiet=false) {
     const subscription = await registration?.pushManager?.getSubscription();
     if (subscription) { try { await context.apiFetch('/api/push/subscribe', {method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify(subscription.toJSON())}); } finally { await subscription.unsubscribe(); } }
-    toast('Push desativado neste dispositivo.');
+    if(!quiet)toast('Push desativado neste dispositivo.');
   }
+  let dispatchTask,retryPush;
   async function dispatchPush() {
-    if (!state().config?.pushConfigured || !state().session) return;
-    try { const result = await (await context.apiFetch('/api/notifications/dispatch',{method:'POST',keepalive:true})).json(); if (result.retry) setTimeout(() => dispatchPush(), 21000); } catch { /* A saved message must not fail because a push provider is offline. */ }
+    const uid=state().session?.user.id;if(!state().config?.pushConfigured||!uid||dispatchTask)return;
+    clearTimeout(retryPush);dispatchTask=true;
+    try{const result=await(await context.apiFetch('/api/notifications/dispatch',{method:'POST',keepalive:true})).json();
+      if(result.retry&&state().session?.user.id===uid)retryPush=setTimeout(()=>{if(state().session?.user.id===uid)dispatchPush();},21000);
+    }catch{/* Message storage succeeds independently of notification providers. */}finally{dispatchTask=false;}
   }
   async function notifyActivity(data) {
-    const s = state(); if (!s.session || data.author_id === s.session.user.id || s.profile?.presence_status === 'dnd') return;
+    const s = state(); if (!s.session || data.author_id === s.session.user.id) return;
     if (seenActivity.has(data.id)) return; seenActivity.add(data.id); if (seenActivity.size > 1000) seenActivity.delete(seenActivity.values().next().value);
     if (!document.hidden && s.selected?.id === data.scope && !s.home) { markRead(); return; }
     const prior = unread[data.scope] || {count:0, seen:new Date().toISOString()};
     unread[data.scope] = {...prior, count:Math.min(999, prior.count + 1)}; saveUnread(); decorateNavigation();
-    if (data.mentioned || data.private) { audio(); if (document.hidden && 'Notification' in window && Notification.permission === 'granted' && !s.config.pushConfigured) {
+    if ((data.mentioned || data.private) && s.profile?.presence_status !== 'dnd') { audio(); if (document.hidden && 'Notification' in window && Notification.permission === 'granted' && !s.config.pushConfigured) {
       const title = data.private ? 'Nova mensagem privada · Órbita' : 'Você foi mencionado · Órbita';
       if (registration) await registration.showNotification(title, {body:'Abra a Órbita para ler.', icon:'/static/icons/icon-192.png', tag:'orbita-' + data.id});
       else if ('Notification' in window) new Notification(title, {tag:'orbita-' + data.id});
     } }
   }
   function markRead() {
-    const s = state(); if (!s.session || !s.selected || s.home || document.hidden) return;
+    const s = state(); if (!s.session || !s.selected || s.selected.kind!=='text' || s.home || document.hidden) return;
     unread[s.selected.id] = {count:0, seen:new Date().toISOString()}; saveUnread(); decorateNavigation();
   }
   function decorateNavigation() {
     for (const node of document.querySelectorAll('[data-channel-id]')) {
       const count = unread[node.dataset.channelId]?.count || 0;
-      node.classList.toggle('unread', count > 0); node.querySelector('.unread-indicator')?.remove();
-      if (count) { const badge = el('span', 'unread-indicator', count > 99 ? '99+' : String(count)); badge.setAttribute('aria-label', count + ' mensagens não lidas'); node.append(badge); }
+      node.classList.toggle('unread', count > 0);let badge=node.querySelector('.unread-indicator');
+      if(!count){badge?.remove();continue;}
+      if(!badge){badge=el('span','unread-indicator');node.append(badge);}const label=count>99?'99+':String(count);if(badge.textContent!==label)badge.textContent=label;badge.setAttribute('aria-label',count+' mensagens não lidas');
     }
   }
   async function refreshUnread() {
-    const s = state(), uid = s.session?.user.id; if (!uid) return;
-    for (const target of [...s.channels.filter(c => c.kind === 'text'), ...s.conversations.map(c => ({...c, private:true}))].slice(0, 60)) {
-      const since = unread[target.id]?.seen; if (!since) continue;
-      const result = await s.db.from(target.private ? 'direct_messages' : 'messages').select('id', {head:true, count:'exact'}).eq(target.private ? 'conversation_id' : 'channel_id', target.id).neq('author_id', uid).gt('created_at', since);
-      if (state().session?.user.id !== uid) return;
-      if (!result.error) unread[target.id] = {...unread[target.id], count:result.count || 0};
-    }
-    saveUnread(); markRead(); decorateNavigation();
+    const s=state(),uid=s.session?.user.id;if(!uid)return;
+    const targets=[...s.channels.filter(c=>c.kind==='text'),...s.conversations.map(c=>({...c,private:true}))].slice(0,60);
+    for(let index=0;index<targets.length;index+=4){await Promise.all(targets.slice(index,index+4).map(async target=>{
+      const since=unread[target.id]?.seen,priorCount=unread[target.id]?.count;if(!since)return;
+      const result=await s.db.from(target.private?'direct_messages':'messages').select('id',{head:true,count:'exact'}).eq(target.private?'conversation_id':'channel_id',target.id).neq('author_id',uid).gt('created_at',since);
+      if(state().session?.user.id!==uid||unread[target.id]?.seen!==since||result.error)return;
+      const count=unread[target.id]?.count!==priorCount?Math.max(result.count||0,unread[target.id]?.count||0):result.count||0;
+      unread[target.id]={...unread[target.id],count};
+    }));if(state().session?.user.id!==uid)return;}
+    saveUnread();markRead();decorateNavigation();
   }
 
   async function sessionChanged() {
     const s = state(), uid = s.session?.user.id;
     if (uid === subscribedUser) return;
-    if (inbox) await s.db.removeChannel(inbox); if (typing) await s.db.removeChannel(typing); inbox = typing = null;
-    closePanel(); subscribedUser = uid;
+    const version=++sessionVersion,oldInbox=inbox,oldTyping=typing;inbox=typing=null;subscribedUser=uid;closePanel();clearTimeout(retryPush);seenActivity.clear();typingUsers.clear();unread={};
+    await Promise.all([oldInbox,oldTyping].filter(Boolean).map(channel=>s.db.removeChannel(channel)));
+    if(version!==sessionVersion)return;
     if (!uid) { const push = await registration?.pushManager?.getSubscription(); await push?.unsubscribe(); return; }
     try { unread = JSON.parse(localStorage.getItem('orbita-unread-' + uid) || '{}'); } catch { unread = {}; }
     for (const target of [...s.channels, ...s.conversations]) unread[target.id] ||= {count:0, seen:new Date().toISOString()};
@@ -134,22 +148,21 @@ export function initEnhancements(context) {
     dispatchPush();
   }
   async function channelChanged() {
-    closePanel(); typingUsers.clear(); renderTyping();
-    const s = state(); if (typing) await s.db.removeChannel(typing); typing = null;
-    if (!s.session || !s.selected || s.selected.kind !== 'text' || s.home) return;
-    const scope = s.selected.id;
-    typing = s.db.channel('orbita:' + (s.selected.private ? 'direct:' : 'channel:') + scope, {config:{private:true, broadcast:{self:false}}});
-    typing.on('broadcast', {event:'typing'}, ({payload}) => {
-      if (payload?.user === state().session?.user.id || typeof payload?.user !== 'string') return;
-      const p = state().people.find(p => p.id === payload.user); if (!p) return;
-      typingUsers.set(p.id, {name:p.display_name, until:Date.now()+5000}); renderTyping();
-    }).subscribe();
-    markRead();
+    const version=++channelVersion;closePanel();typingUsers.clear();renderTyping();
+    const s=state(),previous=typing;typing=null;if(previous)await s.db.removeChannel(previous);
+    if(version!==channelVersion||!s.session||!s.selected||s.selected.kind!=='text'||s.home)return;
+    const scope=s.selected.id,uid=s.session.user.id;
+    typing=s.db.channel('orbita:'+(s.selected.private?'direct:':'channel:')+scope,{config:{private:true,broadcast:{self:false}}});
+    typing.on('broadcast',{event:'typing'},({payload})=>{
+      if(version!==channelVersion||state().selected?.id!==scope||state().session?.user.id!==uid||payload?.user===uid||typeof payload?.user!=='string')return;
+      const p=state().people.find(p=>p.id===payload.user);if(!p)return;
+      typingUsers.set(p.id,{name:p.display_name,until:Date.now()+5000});renderTyping();
+    }).subscribe();markRead();
   }
   function renderTyping() {
     for (const [id,p] of typingUsers) if (p.until < Date.now()) typingUsers.delete(id);
     const names = [...typingUsers.values()].slice(0,3).map(p=>p.name), bar = $('typing-bar');
-    bar.hidden = names.length === 0; $('typing-text').textContent = names.length ? names.join(', ') + (names.length === 1 ? ' está digitando…' : ' estão digitando…') : '';
+    bar.hidden=names.length===0;const text=names.length?names.join(', ')+(names.length===1?' está digitando…':' estão digitando…'):'';if($('typing-text').textContent!==text)$('typing-text').textContent=text;
   }
   setInterval(renderTyping, 1500);
   $('message-input').addEventListener('input', () => {
@@ -189,10 +202,10 @@ export function initEnhancements(context) {
   }
   async function loadThread(reset) {
     if(panelKind!=='thread'||!threadTarget)return;
-    const version=threadVersion,target=threadTarget,root=threadRoot,list=panel.querySelector('.thread-replies');
+    const version=threadVersion,request=++threadReadVersion,target=threadTarget,root=threadRoot,list=panel.querySelector('.thread-replies');
     let query=state().db.from(target.private?'direct_messages':'messages').select(context.messageFields).eq('thread_root',root).order('created_at').order('id').limit(80);
     if(!reset&&threadCursor)query=query.or(`created_at.gt.${threadCursor.created_at},and(created_at.eq.${threadCursor.created_at},id.gt.${threadCursor.id})`);
-    const result=await checked(query);if(version!==threadVersion)return;
+    const result=await checked(query);if(version!==threadVersion||request!==threadReadVersion)return;
     if(reset)list.replaceChildren();for(const m of result)list.append(compactMessage(m));threadCursor=result.at(-1)||threadCursor;threadMore.hidden=result.length<80;
   }
 
@@ -218,18 +231,20 @@ export function initEnhancements(context) {
     const input=$('message-input'),prefix=input.value.slice(0,input.selectionStart),match=prefix.match(/(?:^|\s)@([a-z0-9_]*)$/i),popup=$('autocomplete-popover');
     popup.replaceChildren();if(!match){popup.classList.add('hidden');return;}
     const users=state().people.filter(p=>p.username?.startsWith(match[1].toLowerCase())).slice(0,6);
-    for(const p of users){const b=button(p.display_name+' · @'+p.username,()=>{const start=input.selectionStart-match[1].length-1;input.setRangeText('@'+p.username+' ',start,input.selectionStart,'end');popup.classList.add('hidden');input.focus();});b.onmousedown=event=>event.preventDefault();popup.append(b);}
+    for(const p of users){const b=button(p.display_name+' · @'+p.username,()=>{const start=input.selectionStart-match[1].length-1;input.setRangeText('@'+p.username+' ',start,input.selectionStart,'end');popup.classList.add('hidden');input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();});b.onmousedown=event=>event.preventDefault();popup.append(b);}
     popup.classList.toggle('hidden',!users.length);
   }
   $('message-input').addEventListener('keydown',event=>{const popup=$('autocomplete-popover');if(!popup.classList.contains('hidden')&&event.key==='Tab'){event.preventDefault();popup.querySelector('button')?.click();}if(event.key==='Escape')popup.classList.add('hidden');});
 
+  let uploading=false;
   async function sendFiles(files) {
     const target={...state().selected},root=panelKind==='thread'&&threadTarget?.id===state().selected?.id?threadRoot:null;if(!state().session||target.kind!=='text')return toast('Abra um canal de texto ou uma DM para anexar arquivos.');
+    if(!files.length)return;if(uploading)return toast('Aguarde o envio atual terminar.');
     if(files.length>5)return toast('Envie até cinco arquivos por vez.');
-    $('attach-file').disabled=true;
-    try{for(const file of files){toast('Preparando '+file.name+'…');const a=await context.uploadFile(file,target);try{await checked(state().db.from(target.private?'direct_messages':'messages').insert({[target.private?'conversation_id':'channel_id']:target.id,author_id:state().session.user.id,content:'📎 '+a.name,attachment_id:a.id,thread_root:root}));}catch(error){await state().db.from('attachments').delete().eq('id',a.id);await state().db.storage.from('orbita-files').remove([a.storage_path]);throw error;}}
+    const sender=state().session.user.id;uploading=true;$('attach-file').disabled=true;
+    try{for(const file of files){toast('Preparando '+file.name+'…');if(state().session?.user.id!==sender)throw Error('Sua conta mudou; envio cancelado.');const a=await context.uploadFile(file,target);try{if(state().session?.user.id!==sender)throw Error('Sua conta mudou; envio cancelado.');await checked(state().db.from(target.private?'direct_messages':'messages').insert({[target.private?'conversation_id':'channel_id']:target.id,author_id:sender,content:'📎 '+a.name,attachment_id:a.id,thread_root:root}));}catch(error){await state().db.from('attachments').delete().eq('id',a.id);await state().db.storage.from('orbita-files').remove([a.storage_path]);throw error;}}
       if(state().selected?.id===target.id)await context.refreshMessages();if(root&&threadRoot===root)await loadThread(true);dispatchPush();toast('Arquivo enviado.');
-    }catch(error){report(error);}finally{$('attach-file').disabled=false;}
+    }catch(error){report(error);}finally{uploading=false;$('attach-file').disabled=false;}
   }
   document.addEventListener('paste',event=>{if(!state().session||!event.target.closest('#text-view,.thread-form'))return;const files=[...(event.clipboardData?.items||[])].filter(item=>item.kind==='file'&&item.type.startsWith('image/')).map(item=>item.getAsFile()).filter(Boolean);if(files.length){event.preventDefault();sendFiles(files);}});
   let dragCount=0;const drop=el('div','file-drop-zone','Solte seus arquivos para enviar');drop.hidden=true;document.body.append(drop);
@@ -240,9 +255,9 @@ export function initEnhancements(context) {
   function showMediaPicker() {showDialog('GIFs e stickers',container=>{
     container.append(el('p','muted','Envie uma animação do dispositivo, um link direto HTTPS de GIF ou uma figurinha da Órbita.'));
     container.append(button('Enviar GIF ou imagem',()=>{$('app-dialog').close();$('file-input').accept='image/*';$('file-input').click();}));
-    const grid=el('div','sticker-picker');for(const name of stickerNames){const b=button('',()=>{$('message-input').value+=' [[sticker:'+name+']] ';$('app-dialog').close();$('message-input').focus();});const image=el('img');image.src='/static/stickers/'+name+'.svg';image.alt='Sticker '+name;b.setAttribute('aria-label','Inserir sticker '+name);b.append(image);grid.append(b);}container.append(grid);
+    const grid=el('div','sticker-picker');for(const name of stickerNames){const b=button('',()=>{context.insertText(' [[sticker:'+name+']] ');$('app-dialog').close();$('message-input').focus();});const image=el('img');image.src='/static/stickers/'+name+'.svg';image.alt='Sticker '+name;b.setAttribute('aria-label','Inserir sticker '+name);b.append(image);grid.append(b);}container.append(grid);
     const form=el('form'),input=inputField(form,'Link HTTPS direto para GIF ou WebP','',1200),save=el('button','primary','Inserir GIF');save.type='submit';form.append(save);container.append(form);
-    form.onsubmit=event=>{event.preventDefault();const url=safeLink(input.value.trim());if(!url||!/^\/(?:.*)\.(gif|webp|png)$/i.test(url.pathname))return toast('Use um link HTTPS direto que termine em GIF, WebP ou PNG.');$('message-input').value+=' '+url.href;$('app-dialog').close();$('message-input').focus();};
+    form.onsubmit=event=>{event.preventDefault();const url=safeLink(input.value.trim());if(!url||!/^\/(?:.*)\.(gif|webp|png)$/i.test(url.pathname))return toast('Use um link HTTPS direto que termine em GIF, WebP ou PNG.');context.insertText(' '+url.href);$('app-dialog').close();$('message-input').focus();};
   });}
 
   function enhanceMessage(article,message) {
@@ -254,6 +269,7 @@ export function initEnhancements(context) {
     if(url&&body&&!article.querySelector('.link-preview')){const link=el('a','link-preview');link.href=url.href;link.target='_blank';link.rel='noopener noreferrer';const id=youtubeId(url.href);if(id){const image=el('img');image.src='https://i.ytimg.com/vi/'+id+'/hqdefault.jpg';image.alt='Miniatura do vídeo no YouTube';image.loading='lazy';image.referrerPolicy='no-referrer';link.append(image);}link.append(el('strong','',id?'Vídeo no YouTube':url.hostname),el('span','muted',url.pathname.slice(0,100)||'Abrir link'));body.append(link);}
   }
   async function messageReceived(message,target) {if(panelKind==='thread'&&threadTarget?.id===target.id&&(message.thread_root===threadRoot||message.id===threadRoot))await loadThread(true);}
+  async function messageDeleted(id,target){if(panelKind!=='thread'||threadTarget?.id!==target.id)return;if(threadRoot===id){closePanel();toast('Esta thread foi removida.');}else if(panel.querySelector('[data-message-id="'+CSS.escape(id)+'"]'))await loadThread(true);}
   async function historyLoaded(){
     const params=new URLSearchParams(location.search),id=params.get('message'),s=state(),target=s.selected;
     if(!id||!/^[0-9a-f-]{36}$/i.test(id)||!target||target.kind!=='text'||focusedLink===target.id+id)return;
@@ -341,6 +357,9 @@ export function initEnhancements(context) {
   function finishGesture(event){if(!gesture)return;const g=gesture;gesture=null;g.item?.style.removeProperty('transform');const t=event.changedTouches?.[0];if(!t)return;const dx=t.clientX-g.x,dy=t.clientY-g.y;if(Math.abs(dy)>55)return;if(g.item&&dx>75){const message=state().messages.get(g.item.dataset.messageId)||g.item.orbitaMessage;if(message)context.replyToMessage(message);}else if(g.x<28&&dx>65){document.body.classList.add('mobile-menu-open');document.querySelectorAll('.mobile-nav-btn').forEach(b=>b.setAttribute('aria-expanded','true'));}else if(g.sidebar&&dx<-65)context.closeMobileMenu();}
   document.addEventListener('touchend',finishGesture,{passive:true});document.addEventListener('touchcancel',()=>{gesture?.item?.style.removeProperty('transform');gesture=null;},{passive:true});
   function viewport(){document.documentElement.style.setProperty('--app-viewport',(window.visualViewport?.height||window.innerHeight)+'px');}
+  const offline=el('div','network-notice','Você está sem conexão. Seu rascunho está guardado nesta aba.');offline.setAttribute('role','status');document.querySelector('#text-view .chat-header').after(offline);
+  function connectionState(){offline.hidden=navigator.onLine;$('conn-label').textContent=navigator.onLine?'Conexão disponível':'Sem conexão';document.body.classList.toggle('network-offline',!navigator.onLine);}
+  window.addEventListener('online',connectionState);window.addEventListener('offline',connectionState);connectionState();
   window.visualViewport?.addEventListener('resize',viewport);window.addEventListener('resize',viewport);viewport();
   document.addEventListener('visibilitychange',()=>{syncWakeLock();if(!document.hidden){markRead();activeAgain();}});
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&panel)closePanel();});
@@ -362,5 +381,5 @@ export function initEnhancements(context) {
   const brand=$('friends-nav');brand.replaceChildren();const brandImage=el('img');brandImage.src='/static/icons/icon.svg';brandImage.alt='Órbita';brand.append(brandImage);
   $('toast').setAttribute('role','status');$('toast').setAttribute('aria-live','polite');
   setInterval(()=>{for(const time of document.querySelectorAll('time[datetime]'))time.textContent=relativeTime(time.dateTime);},60000);
-  return { sessionChanged, channelChanged, enhanceMessage, decorateVideo, callUpdated, connected, callEnded, dispatchPush, messageReceived, decorateNavigation, presenceStatus, showMediaPicker, sendFiles, showModeration, showAudit, historyLoaded };
+  return { sessionChanged, channelChanged, enhanceMessage, decorateVideo, callUpdated, connected, callEnded, dispatchPush, messageReceived, messageDeleted, disablePush, decorateNavigation, presenceStatus, showMediaPicker, sendFiles, showModeration, showAudit, historyLoaded };
 }

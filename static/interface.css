@@ -76,3 +76,12 @@ body[data-color-mode=light] .main::before{opacity:.35}body[data-color-mode=light
 @media(pointer:coarse){button{min-height:44px}input[type=checkbox]{width:20px;height:20px;flex-shrink:0}.check-field{min-height:44px}.participant-volume{min-height:44px}}
 
 @media(max-width:780px){.header-search-input:not(:focus)::placeholder{color:transparent}}
+
+/* Review: multiline composer and connection feedback. */
+.message-form #message-input{display:block;resize:none;border:0;background:transparent;color:var(--text);font-family:inherit;line-height:1.5;min-height:26px;max-height:160px;overflow-y:auto;box-shadow:none;outline-offset:1px;align-self:center}
+.message-form{align-items:flex-end}.message-form .icon-btn,.message-form .add-btn,.message-form .send-live{align-self:flex-end}
+.network-notice{padding:9px 20px;font-size:12px;line-height:1.5;background:var(--bg-elevated);border-bottom:1px solid var(--border);color:var(--text-dim)}
+.network-offline .free-setup-pill{color:#ffb879!important;border-color:#ffb879!important}
+@media(max-width:780px){.message-form #message-input{font-size:16px}.message-form .send-live{margin-bottom:0}.network-notice{padding:8px 14px}}
+
+.member[role=button]:focus-visible{outline:3px solid var(--accent-hover);outline-offset:1px}

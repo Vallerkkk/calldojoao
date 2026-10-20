@@ -1,14 +1,21 @@
 from uuid import UUID
 import httpx
 from fastapi import Depends, HTTPException
+from upstream import client_for, read_json
 
 def install(app, current_user, settings, make_token):
     async def rows(table, headers, params):
-        async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.get(settings()['SUPABASE_URL'] + '/rest/v1/' + table, headers=headers, params=params)
+        try:
+            async with client_for(app) as client:
+                response = await client.get(settings()['SUPABASE_URL'] + '/rest/v1/' + table, headers=headers, params=params)
+        except httpx.HTTPError:
+            raise HTTPException(503, 'A conexão com os dados falhou. Tente novamente.') from None
         if response.status_code != 200:
             raise HTTPException(503, 'Não foi possível consultar os dados da comunidade.')
-        return response.json()
+        result = read_json(response, list)
+        if any(not isinstance(item, dict) for item in result):
+            raise HTTPException(503, 'O serviço de dados retornou uma resposta inválida.')
+        return result
 
     async def scope(kind, target_id, user, headers):
         if kind not in ('channel', 'direct'):

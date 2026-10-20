@@ -42,3 +42,7 @@ Mensagens sem alterações reutilizam os mesmos elementos, preservando foco, ima
 No celular, o nome do canal permanece visível, os recursos secundários ficam em Mais opções e o composer acompanha a altura disponível. O botão Mensagens recentes retorna ao fim da conversa.
 
 O teste `tests/browser_smoke.cjs` usa Playwright e contas simuladas. Execute com o servidor local na porta 8765. Defina `ORBITA_PLAYWRIGHT` para o módulo instalado e `CHROME_PATH` para o executável do Chrome, se necessário. Os screenshots de teste vão para `work/browser-temp`.
+
+## Revisão de confiabilidade
+
+Consulte REVISAO.md para as correções e validações de 20/10/2026. O composer aceita Shift+Enter; rascunhos ficam separados por canal durante a sessão. A criação de canais privados, as permissões de chamadas e as notificações receberam testes adicionais.

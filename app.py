@@ -1,5 +1,6 @@
 """Órbita: comunidade com texto e chamadas. Execute: python -m uvicorn app:app --reload."""
 import os
+from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
 from uuid import UUID
@@ -10,13 +11,26 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 from livekit import api
 from integrations import install
 from community_features import install_features
+from upstream import client_for, new_client, read_json
 
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / '.env')
-app = FastAPI(title='Órbita', docs_url=None, redoc_url=None)
+@asynccontextmanager
+async def lifespan(application):
+    async with new_client() as client:
+        application.state.upstream = client
+        try:
+            yield
+        finally:
+            application.state.upstream = None
+
+
+app = FastAPI(title='Órbita', docs_url=None, redoc_url=None, lifespan=lifespan)
+app.add_middleware(GZipMiddleware, minimum_size=800)
 bearer = HTTPBearer(auto_error=False)
 
 
@@ -31,6 +45,8 @@ async def headers(request, call_next):
     response = await call_next(request)
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'same-origin'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Content-Security-Policy'] = "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
     response.headers['Permissions-Policy'] = 'camera=(self), microphone=(self), display-capture=(self)'
     if request.url.path.startswith('/api/') or request.url.path in ('/', '/sw.js', '/healthz'):
         response.headers['Cache-Control'] = 'no-store'
@@ -59,14 +75,16 @@ async def current_user(credentials: HTTPAuthorizationCredentials | None = Depend
     auth_headers = {'apikey': s['SUPABASE_PUBLISHABLE_KEY'],
                     'Authorization': f'Bearer {credentials.credentials}'}
     try:
-        async with httpx.AsyncClient(timeout=12) as client:
+        async with client_for(app) as client:
             response = await client.get(s['SUPABASE_URL'] + '/auth/v1/user', headers=auth_headers)
     except httpx.HTTPError:
         raise HTTPException(503, 'Não foi possível consultar a autenticação.')
+    if response.status_code >= 500 or response.status_code == 429:
+        raise HTTPException(503, 'A autenticação está temporariamente indisponível.')
     if response.status_code != 200:
         raise HTTPException(401, 'Sua sessão expirou. Entre novamente.')
-    user = response.json()
-    if not user.get('id'):
+    user = read_json(response, dict)
+    if not isinstance(user.get('id'), str) or not user['id']:
         raise HTTPException(401, 'Sessão inválida.')
     return user, auth_headers
 
@@ -79,24 +97,30 @@ async def join(channel_id: UUID, identity=Depends(current_user)):
         raise HTTPException(503, 'Configure as três variáveis LIVEKIT no arquivo .env.')
     # Consulta com o JWT do usuário: as políticas RLS continuam sendo aplicadas.
     try:
-        async with httpx.AsyncClient(timeout=12) as client:
+        async with client_for(app) as client:
             response = await client.get(s['SUPABASE_URL'] + '/rest/v1/channels',
                 headers=auth_headers, params={'id': f'eq.{channel_id}', 'select': 'id,kind'})
     except httpx.HTTPError:
         raise HTTPException(503, 'Não foi possível consultar o canal.')
     if response.status_code != 200:
         raise HTTPException(503, 'Verifique se o SQL do Supabase foi executado.')
-    channels = response.json()
+    channels = read_json(response, list)
     if not channels:
         raise HTTPException(404, 'Canal inexistente ou sem acesso.')
-    if channels[0]['kind'] != 'voice':
+    if not isinstance(channels[0], dict):
+        raise HTTPException(503, 'O serviço de dados retornou uma sala inválida.')
+    if channels[0].get('kind') != 'voice':
         raise HTTPException(400, 'Este canal é de texto.')
     try:
-        async with httpx.AsyncClient(timeout=12) as client:
+        async with client_for(app) as client:
             permissions = await client.post(s['SUPABASE_URL'] + '/rest/v1/rpc/call_permissions', headers=auth_headers, json={'target': str(channel_id)})
+        if permissions.status_code >= 500 or permissions.status_code == 429:
+            raise HTTPException(503, 'Não foi possível verificar as permissões da sala.')
         if permissions.is_error:
             raise HTTPException(403, 'Você não tem acesso a esta sala.')
-        rights = permissions.json()
+        rights = read_json(permissions, dict)
+        if any(type(rights.get(key)) is not bool for key in ('can_publish', 'stage', 'moderator')):
+            raise HTTPException(503, 'O serviço de dados retornou permissões inválidas.')
     except httpx.HTTPError:
         raise HTTPException(503, 'Não foi possível verificar as permissões da sala.')
     return make_token(user, f'channel-{channel_id}', can_publish=rights['can_publish'], stage=rights['stage'], moderator=rights['moderator'])
@@ -106,7 +130,8 @@ def make_token(user, room_name, can_publish=True, stage=False, moderator=False):
     s = settings()
     if not all(s[k] for k in ('LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET')):
         raise HTTPException(503, 'As chamadas ainda não foram configuradas.')
-    name = str(user.get('user_metadata', {}).get('display_name') or 'Participante')[:50]
+    metadata = user.get('user_metadata') or {}
+    name = str(metadata.get('display_name') or 'Participante')[:50]
     token = (api.AccessToken(s['LIVEKIT_API_KEY'], s['LIVEKIT_API_SECRET'])
         .with_identity(user['id']).with_name(name).with_ttl(timedelta(minutes=10))
         .with_grants(api.VideoGrants(room_join=True, room=room_name,
