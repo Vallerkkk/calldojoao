@@ -12,6 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from livekit import api
 from integrations import install, drive_configured, MAX_UPLOAD
+from admin_features import install as install_admin, firebase_config
 
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / '.env')
@@ -43,6 +44,7 @@ def config():
     return {'supabaseUrl': s['SUPABASE_URL'],
             'supabaseKey': s['SUPABASE_PUBLISHABLE_KEY'],
             'configured': ready,
+            'firebaseConfig': firebase_config(),
             'driveConfigured': drive_configured(), 'uploadLimit': MAX_UPLOAD,
             'callsConfigured': all(s[k] for k in ('LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'))}
 
@@ -99,7 +101,7 @@ def make_token(user, room_name):
     token = (api.AccessToken(s['LIVEKIT_API_KEY'], s['LIVEKIT_API_SECRET'])
         .with_identity(user['id']).with_name(name).with_ttl(timedelta(minutes=10))
         .with_grants(api.VideoGrants(room_join=True, room=room_name,
-            can_publish=True, can_subscribe=True, can_publish_data=False)).to_jwt())
+            can_publish=True, can_subscribe=True, can_publish_data=True)).to_jwt())
     return JSONResponse({'url': s['LIVEKIT_URL'], 'token': token})
 
 
@@ -109,5 +111,6 @@ def index():
 
 
 install(app, current_user, settings, make_token)
+install_admin(app, current_user, settings)
 
 app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')
