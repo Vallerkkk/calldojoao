@@ -37,8 +37,8 @@
   --r-lg: 16px;
   --msg-gap: 4px;
 
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --mono: 'JetBrains Mono', 'Courier New', monospace;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
 }
 
 body[data-theme="blurple"] {
@@ -2029,6 +2029,187 @@ svg { display: block; flex-shrink: 0; }
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+
+/* Grouped consecutive messages (Discord style) */
+.msg.grouped {
+  padding-top: 1px;
+  padding-bottom: 1px;
+}
+.msg.grouped .avatar-col {
+  width: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.msg.grouped .hover-time {
+  font-size: 10px;
+  color: var(--text-mut);
+  opacity: 0;
+  font-family: var(--mono);
+  transition: opacity .1s;
+}
+.msg.grouped:hover .hover-time {
+  opacity: 1;
+}
+body[data-density="compact"] .msg.grouped .avatar-col {
+  width: 28px;
+}
+
+/* Uploaded real image attachment */
+.uploaded-img-att {
+  margin-top: 6px;
+  max-width: 420px;
+  max-height: 280px;
+  border-radius: var(--r);
+  border: 1px solid var(--border-strong);
+  display: block;
+  object-fit: cover;
+}
+
+/* Real WebRTC Video inside voice tile */
+.real-rtc-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: #000;
+}
+.tile .tile-avatar,
+.tile .tile-label,
+.tile .tile-you {
+  z-index: 2;
+}
+
+/* Header Free Setup Pill */
+.free-setup-pill {
+  width: auto !important;
+  padding: 0 10px !important;
+  height: 28px !important;
+  border-radius: 99px !important;
+  background: rgba(35,165,90,0.14) !important;
+  border: 1px solid rgba(35,165,90,0.35) !important;
+  color: #4ade80 !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  margin-right: 4px;
+}
+.free-setup-pill:hover {
+  background: rgba(35,165,90,0.25) !important;
+  color: #fff !important;
+}
+.free-setup-pill .conn-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--online);
+  box-shadow: 0 0 8px var(--online);
+}
+
+/* Autocomplete Popover (@mentions and #channels) */
+.autocomplete-popover {
+  left: 16px;
+  right: 16px;
+  bottom: 66px;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.autocomplete-popover .ac-head {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-mut);
+  padding: 4px 8px;
+}
+.autocomplete-popover button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.autocomplete-popover button:hover {
+  background: var(--accent);
+  color: #fff;
+}
+.code-cmd-box {
+  background: var(--bg-deep);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: #c3e88d;
+  overflow-x: auto;
+  white-space: pre;
+  line-height: 1.5;
+}
+
+
+/* Drag-and-drop overlay */
+.dropzone-overlay {
+  position: fixed;
+  inset: 12px;
+  background: rgba(11, 11, 20, 0.86);
+  backdrop-filter: blur(6px);
+  border: 3px dashed var(--accent);
+  border-radius: var(--r-lg);
+  z-index: 150;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+}
+.dropzone-overlay h3 {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+}
+.dropzone-overlay p {
+  font-size: 14px;
+  color: var(--accent-hover);
+}
+.edited-tag {
+  font-size: 10.5px;
+  color: var(--text-mut);
+  margin-left: 4px;
+  font-style: italic;
+}
+.soundboard-bar {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  padding: 8px 16px 0;
+  background: var(--bg-main);
+  flex-wrap: wrap;
+}
+.sb-fx-btn {
+  padding: 5px 10px;
+  border-radius: 99px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  transition: all .12s;
+}
+.sb-fx-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  transform: translateY(-1px);
 }
 
 /* ============================================================

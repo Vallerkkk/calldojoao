@@ -314,7 +314,7 @@ async function boot() {
     // Não execute chamadas ao Supabase dentro do callback de Auth.
     db.auth.onAuthStateChange((_event, next) => { setTimeout(() => showSession(next), 0); });
     const {data, error} = await db.auth.getSession(); if (error) throw error;
-    await showSession(data.session);startGooglePerformance();
+    await showSession(data.session);
   } catch (error) { $('auth-status').textContent = 'Falha ao iniciar: ' + errorText(error); $('auth-submit').disabled = true; }
 }
 // Social features share the authenticated Supabase client and its row policies.
@@ -497,23 +497,21 @@ async function downloadAttachment(a,play=false){
   const link=el('a');link.href=url;link.download=a.name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 async function uploadFile(file,target){
-  if(!config.driveConfigured)throw Error('O proprietário ainda precisa conectar o Google Drive.');
+  if(!config.storageConfigured)throw Error('Envio de arquivos indisponível nesta versão.');
   if(file.size>config.uploadLimit)throw Error('Escolha um arquivo de até 25 MB.');
   return (await apiFetch(`/api/attachments?target_kind=${target.private?'direct':'channel'}&target_id=${target.id}`,{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream','X-File-Name':encodeURIComponent(file.name)},body:file})).json();
 }
-$('attach-file').onclick=()=>{if(!config.driveConfigured)return toast('O Drive está preparado no site, mas falta a autorização Google do proprietário.');$('file-input').click();};
+$('attach-file').onclick=()=>{if(!config.storageConfigured)return toast('Envio de arquivos indisponível nesta versão.');$('file-input').click();};
 $('file-input').onchange=async()=>{
   const file=$('file-input').files[0],target=selected,version=generation;if(!file)return;
-  $('attach-file').disabled=true;try{toast('Enviando arquivo para o Drive…');const attachment=await uploadFile(file,target);
+  $('attach-file').disabled=true;try{toast('Enviando arquivo…');const attachment=await uploadFile(file,target);
     await checked(db.from(target.private?'direct_messages':'messages').insert({[scopeKey(target)]:target.id,author_id:session.user.id,content:'📎 '+attachment.name,attachment_id:attachment.id}));
     if(version===generation)await refreshMessages();toast('Arquivo enviado.');
   }catch(e){toast(errorText(e));}finally{$('attach-file').disabled=false;$('file-input').value='';}
 };
-$('drive-info').onclick=()=>showDialog('Arquivos no Google Drive',container=>{
-  container.append(el('p','',config.driveConfigured?'O Drive está conectado. Você pode compartilhar arquivos de até 25 MB.':'A integração está preparada. O proprietário precisa autorizar uma pasta do Google Drive para ativar os envios.'),el('p','muted','Os downloads passam pelo site e respeitam as permissões da conversa. Nenhum arquivo privado é compartilhado publicamente.'));
-});
 function renderMusicStatus(text){$('music-status').textContent=text;}
 async function watchMusic(target){
+  if(!config.storageConfigured){renderMusicStatus("Upload de música indisponível");return;}
   const version=++musicVersion;musicState=null;audioPlayer.pause();audioPlayer.removeAttribute('src');if(musicUrl){URL.revokeObjectURL(musicUrl);musicUrl=null;}
   if(musicSubscription)await db.removeChannel(musicSubscription);
   renderMusicStatus('Escolha um áudio para ouvir juntos');$('music-play').textContent='▶';
@@ -536,7 +534,7 @@ async function setMusic(values){
 $('music-play').onclick=()=>setMusic({playing:!musicState?.playing,position:audioPlayer.currentTime}).catch(e=>toast(errorText(e)));
 $('music-listen').onclick=()=>audioPlayer.play().catch(()=>toast('Escolha uma música primeiro.'));
 $('music-volume').oninput=e=>{audioPlayer.volume=Number(e.target.value);};
-$('music-upload').onclick=()=>{if(!config.driveConfigured)return toast('Conecte o Drive para compartilhar arquivos de música.');$('music-input').click();};
+$('music-upload').onclick=()=>{if(!config.storageConfigured)return toast('Envio de arquivos indisponível nesta versão.');$('music-input').click();};
 $('music-input').onchange=async()=>{
   const file=$('music-input').files[0],target=selected,version=musicVersion;if(!file||!target)return;
   $('music-upload').disabled=true;
@@ -573,7 +571,7 @@ initSocial=async()=>{
     .on('postgres_changes',{event:'*',schema:'public',table:'site_roles'},async()=>{siteRoles=await checked(db.from('site_roles').select('*'));renderMembers();updateFounders();})
     .on('postgres_changes',{event:'*',schema:'public',table:'poll_votes'},()=>{if(!home&&selected?.kind==='text')refreshMessages();}).subscribe();
   if(new URLSearchParams(location.hash.slice(1)).has('convite'))toast('Entre na conta de Kalil e abra Configurações → Aceitar convite de criador.');
-  $('banner-title').textContent=config.driveConfigured?'Drive conectado':'Google Drive';
+  $('banner-title').textContent='Sua comunidade';
 };
 function navigation(direct=false){
   $('sidebar-scroll-content').classList.toggle('hidden',direct);$('dm-scroll-content').classList.toggle('hidden',!direct);
@@ -670,7 +668,7 @@ $('settings').onclick=()=>{
   const themeLabel=el('label','field','Tema'),theme=el('select');for(const [key,label]of[['orbita','Violeta Órbita'],['blurple','Blurple'],['emerald','Emerald'],['nitro','Pink']]){const option=el('option','',label);option.value=key;theme.append(option);}theme.value=localStorage.getItem('orbita-theme')||'orbita';themeLabel.append(theme);appearance.append(themeLabel);
   const densityLabel=el('label','field','Densidade'),density=el('select');for(const value of ['cozy','compact']){const option=el('option','',value==='cozy'?'Confortável':'Compacta');option.value=value;density.append(option);}density.value=localStorage.getItem('orbita-density')||'cozy';densityLabel.append(density);appearance.append(densityLabel);
   for(const [input,key]of[[theme,'theme'],[density,'density']])input.onchange=()=>{localStorage.setItem('orbita-'+key,input.value);document.body.dataset[key]=input.value;};
-  container.append(appearance,button('Aceitar convite de criador',()=>showCreatorInvite()),button('Google Cloud e Google Drive',()=>openCloud()));
+  container.append(appearance,button('Aceitar convite de criador',()=>showCreatorInvite()),button('Sobre esta versão',()=>openCloud()));
   if(isAdmin())container.append(button('Administrar o site',()=>openManagement(),'primary'));
 };
 function showCreatorInvite(){showDialog('Convite de criador — Kalil',container=>{
@@ -683,17 +681,12 @@ function openManagement(){showDialog(isAdmin()?'Administração do site':'Config
   if(!managesCommunity()){container.append(el('p','','Você não tem permissão para alterar esta comunidade.'));return;}
   const form=el('form'),name=inputField(form,'Nome',c?.name,60),description=inputField(form,'Descrição',c?.description,240),save=el('button','primary','Salvar comunidade');save.type='submit';form.append(save);container.append(form);
   form.onsubmit=async e=>{e.preventDefault();try{await checked(db.from('communities').update({name:name.value.trim(),description:description.value.trim()}).eq('id',activeCommunity));c.name=name.value.trim();c.description=description.value.trim();renderCommunityRail();toast('Comunidade atualizada.');}catch(error){toast(errorText(error));}};
-  const actions=el('div','admin-menu');actions.append(button('Criar canal',()=>{$('app-dialog').close();$('create-channel').click();}),button('Google Cloud / Drive',()=>openCloud()));container.append(actions);
+  const actions=el('div','admin-menu');actions.append(button('Criar canal',()=>{$('app-dialog').close();$('create-channel').click();}),button('Sobre esta versão',()=>openCloud()));container.append(actions);
   for(const channel of channels.filter(ch=>ch.community_id===activeCommunity)){const row=el('div','community-card');row.append(el('strong','',channel.name),button('Editar',()=>editChannel(channel)));container.append(row);}
 });}
 function editChannel(channel){showDialog('Editar canal',container=>{const form=el('form'),name=inputField(form,'Nome',channel.name,40),description=inputField(form,'Descrição',channel.description,240),save=el('button','primary','Salvar');save.type='submit';form.append(save);container.append(form);form.onsubmit=async e=>{e.preventDefault();try{await checked(db.from('channels').update({name:name.value.trim(),description:description.value.trim()}).eq('id',channel.id));channel.name=name.value.trim();channel.description=description.value.trim();renderChannels();if(selected?.id===channel.id)await selectChannel(channel);$('app-dialog').close();}catch(error){toast(errorText(error));}};
 container.append(button('Excluir canal e seu histórico',()=>showDialog('Excluir canal',box=>{box.append(el('p','','A exclusão remove permanentemente o histórico deste canal. Confirme somente se desejar apagar esses dados.'),button('Excluir permanentemente',async()=>{await checked(db.from('channels').delete().eq('id',channel.id));channels=channels.filter(ch=>ch.id!==channel.id);$('app-dialog').close();renderChannels();if(selected?.id===channel.id)showFriends();},'danger'));}),'danger'));});}
-function openCloud(){showDialog('Google Cloud e arquivos',container=>{
-  container.append(el('p','',config.driveConfigured?'Google Drive conectado. Arquivos de até 25 MB estão disponíveis.':'A conexão Google aguarda as credenciais OAuth do proprietário. Nenhum serviço pago foi ativado.'),el('p','muted','O Supabase mantém contas, mensagens e permissões. O Drive armazena arquivos e cópias JSON do banco da comunidade, sem incluir conversas privadas de outras pessoas.'));
-  container.append(el('p','muted','Monitoramento Google: '+(config.firebaseConfig?'configurado; ative nas preferências de diagnóstico.':'aguardando configuração do projeto Firebase.')));
-  if(isAdmin())container.append(button('Salvar cópia do banco no Drive',async()=>{const result=await(await apiFetch('/api/admin/drive-backup',{method:'POST'})).json();toast(result.message);},'primary'));
-  const label=el('label','check-field'),check=el('input');check.type='checkbox';check.checked=localStorage.getItem('orbita-diagnostics')==='true';label.append(check,document.createTextNode('Permitir diagnóstico de desempenho pelo Firebase'));container.append(label);check.onchange=()=>{localStorage.setItem('orbita-diagnostics',String(check.checked));if(check.checked)startGooglePerformance();toast('Preferência salva. Recarregue a página para encerrar uma sessão de diagnóstico ativa.');};
-});}
+function openCloud(){showDialog('Sobre esta versão',container=>{container.append(el('p','','Contas e mensagens no Supabase. Chamadas com LiveKit. Sem integração Google Cloud ou Drive. Uploads de arquivos e músicas estão indisponíveis nesta versão.'));});}
 $('dd-boost-btn').onclick=openCloud;$('banner-action-btn').onclick=openCloud;$('drive-info').onclick=openCloud;
 $('up-mic-btn').onclick=()=>$('mic').click();$('up-deafen-btn').onclick=()=>$('deafen').click();$('vb-mic').onclick=()=>$('mic').click();$('vb-video').onclick=()=>$('camera').click();$('dock-name').onclick=()=>{if(callChannel)selectChannel(callChannel);};
 $('back-to-call').onclick=()=>{if(selected?.private){const c=conversations.find(c=>c.id===selected.id);if(c)openConversation(c);}else{const c=channels.find(c=>c.community_id===activeCommunity&&c.kind==='text');if(c)selectChannel(c);}};
@@ -704,10 +697,6 @@ function receiveCallData(payload,participant,_kind,topic){if(topic!=='orbita-rea
 const screenLabel=el('label','screen-option'),screenCheck=el('input');screenCheck.type='checkbox';screenCheck.id='share-screen-audio';screenCheck.checked=localStorage.getItem('orbita-screen-audio')!=='false';screenLabel.append(screenCheck,document.createTextNode('Incluir áudio da tela (autorize também na janela do navegador)'));$('active-controls').before(screenLabel);
 function updateScreenAudio(){SCREEN_CAPTURE.audio=screenCheck.checked;SCREEN_CAPTURE.systemAudio=screenCheck.checked?'include':'exclude';SCREEN_CAPTURE.surfaceSwitching='include';localStorage.setItem('orbita-screen-audio',String(screenCheck.checked));}
 screenCheck.onchange=updateScreenAudio;updateScreenAudio();
-async function startGooglePerformance(){
-  if(!config?.firebaseConfig||localStorage.getItem('orbita-diagnostics')!=='true')return;
-  try{const{initializeApp,getApps}=await import('https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js');const{getPerformance,isSupported}=await import('https://www.gstatic.com/firebasejs/12.4.0/firebase-performance.js');if(await isSupported())getPerformance(getApps()[0]||initializeApp(config.firebaseConfig));}catch{toast('O diagnóstico Google está indisponível neste navegador.');}
-}
 $('btn-notif-toggle').onclick=async()=>{if(!('Notification'in window))return toast('Este navegador não oferece notificações.');const permission=await Notification.requestPermission();toast(permission==='granted'?'Notificações ativadas neste navegador.':'Notificações não autorizadas.');};
 document.body.dataset.theme=localStorage.getItem('orbita-theme')||'orbita';document.body.dataset.density=localStorage.getItem('orbita-density')||'cozy';
 window.addEventListener('pagehide',()=>{if(extraSubscription)db?.removeChannel(extraSubscription);});
