@@ -1,6 +1,6 @@
-import { relativeTime, safeLink, stickerNames, youtubeId } from './media-utils.js';
-import { reserveImage, focusElement } from './dom-utils.js';
-import { requestWithDeadline } from './chat-state.js';
+import { relativeTime, safeLink, stickerNames, youtubeId } from './media-utils.js?v=fluency-20261020-2';
+import { reserveImage, focusElement } from './dom-utils.js?v=fluency-20261020-2';
+import { requestWithDeadline } from './chat-state.js?v=fluency-20261020-2';
 
 export function initEnhancements(context) {
   const { el, button, toast, checked, showDialog, inputField } = context;

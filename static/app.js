@@ -1,8 +1,8 @@
-import { compressImage, relativeTime, safeLink, stickerNames } from './media-utils.js';
-import { initEnhancements } from './enhancements.js';
-import { DraftStore, serialToggle } from './runtime-utils.js';
-import { ConversationCache, MessageOutbox, conversationKey, requestWithDeadline } from './chat-state.js';
-import { reconcileNodes, reserveImage, focusElement } from './dom-utils.js';
+import { compressImage, relativeTime, safeLink, stickerNames } from './media-utils.js?v=fluency-20261020-2';
+import { initEnhancements } from './enhancements.js?v=fluency-20261020-2';
+import { DraftStore, serialToggle } from './runtime-utils.js?v=fluency-20261020-2';
+import { ConversationCache, MessageOutbox, conversationKey, requestWithDeadline } from './chat-state.js?v=fluency-20261020-2';
+import { reconcileNodes, reserveImage, focusElement } from './dom-utils.js?v=fluency-20261020-2';
 let enhancements;
 const drafts = new DraftStore(), pendingSends = new Set();
 const draftKey = target => session && target ? session.user.id + ':' + (target.private ? 'dm:' : 'channel:') + target.id : '';
