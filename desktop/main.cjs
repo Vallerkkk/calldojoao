@@ -2,17 +2,18 @@
 const {app,BrowserWindow,Menu,Tray,dialog,shell,session,desktopCapturer,ipcMain,protocol,nativeImage}=require('electron');
 const fs=require('node:fs'),path=require('node:path');
 const {APP_URL,safeHttps,isAppURL,isLocalUI}=require('./policy.cjs');
+const {createUpdateService,updateLabel}=require('./updater.cjs');
 protocol.registerSchemesAsPrivileged([{scheme:'orbita-desktop',privileges:{standard:true,secure:true,supportFetchAPI:true}}]);
 app.enableSandbox();app.setAppUserModelId('com.orbita.desktop');
 const qa=!app.isPackaged&&process.env.ORBITA_DESKTOP_QA==='true';
 if(qa&&process.env.ORBITA_QA_DATA)app.setPath('userData',process.env.ORBITA_QA_DATA);
-let mainWindow,tray,quitting=false,closeChoice=false,closeDialog=false,externalDialog=false,picker;
+let mainWindow,tray,quitting=false,closeChoice=false,closeDialog=false,externalDialog=false,picker,updates;
 const allowed=new Set();
 if(!app.requestSingleInstanceLock()){app.quit();}else{
   app.on('second-instance',()=>showMain());
   app.whenReady().then(start).catch(()=>{dialog.showErrorBox('Órbita','Não foi possível iniciar o aplicativo. Feche e tente novamente.');app.quit();});
 }
-app.on('before-quit',()=>{quitting=true;if(picker&&!picker.isDestroyed())picker.close();});
+app.on('before-quit',()=>{quitting=true;updates?.stop();if(picker&&!picker.isDestroyed())picker.close();});
 app.on('window-all-closed',()=>{if(!tray)app.quit();});
 function showMain(){if(!mainWindow||mainWindow.isDestroyed())return;if(mainWindow.isMinimized())mainWindow.restore();mainWindow.show();mainWindow.focus();}
 function currentFrame(frame){try{return frame&&!frame.detached&&frame===mainWindow.webContents.mainFrame&&isAppURL(frame.url);}catch{return false;}}
@@ -30,10 +31,12 @@ function protectNavigation(window,localOnly=false){
 async function start(){
   const contentTypes={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8'};
   const files=new Set(['picker.html','picker.js','ui.css','loading.html','offline.html']);
-  const localHandler=request=>{
+  const localDocuments=new Map();
+  const localHandler=async request=>{
     const url=new URL(request.url),name=url.pathname.slice(1);
     if(url.hostname!=='ui'||request.method!=='GET'||!files.has(name))return new Response('Not found',{status:404});
-    return new Response(fs.readFileSync(path.join(__dirname,'ui',name)),{headers:{'Content-Type':contentTypes[path.extname(name)],'Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"}});
+    if(!localDocuments.has(name))localDocuments.set(name,fs.promises.readFile(path.join(__dirname,'ui',name)).catch(error=>{localDocuments.delete(name);throw error;}));
+    return new Response(await localDocuments.get(name),{headers:{'Content-Type':contentTypes[path.extname(name)],'Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"}});
   };
   protocol.handle('orbita-desktop',localHandler);
   const ses=session.fromPartition('persist:orbita');
@@ -89,7 +92,23 @@ async function start(){
   });
   tray=new Tray(nativeImage.createFromPath(path.join(__dirname,'assets/icon.png')).resize({width:16,height:16}));tray.setToolTip('Órbita');tray.on('double-click',showMain);
   tray.setContextMenu(Menu.buildFromTemplate([{label:'Abrir Órbita',click:showMain},{label:'Encerrar aplicativo',click:()=>app.quit()}]));
-  Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'Órbita',submenu:[{label:'Reconectar',accelerator:'CmdOrCtrl+R',click:()=>mainWindow.loadURL(APP_URL).catch(()=>{})},{type:'separator'},{label:'Encerrar aplicativo',accelerator:'Alt+F4',click:()=>app.quit()}]},{label:'Exibir',submenu:[{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'},{role:'togglefullscreen'}]},{label:'Ajuda',submenu:[{label:'Site oficial',click:()=>openExternal(APP_URL)},{label:'Sobre a Órbita',click:()=>dialog.showMessageBox(mainWindow,{title:'Órbita Desktop',message:'Órbita '+app.getVersion(),detail:'Texto, voz e vídeo em uma janela própria. Requer conexão à internet. Não inicia automaticamente com o Windows.'})}]}]));
+  Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'Órbita',submenu:[{label:'Reconectar',accelerator:'CmdOrCtrl+R',click:()=>mainWindow.loadURL(APP_URL).catch(()=>{})},{type:'separator'},{label:'Encerrar aplicativo',accelerator:'Alt+F4',click:()=>app.quit()}]},{label:'Exibir',submenu:[{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'},{role:'togglefullscreen'}]},{label:'Ajuda',submenu:[{id:'orbita-update-status',label:'Atualizações automáticas',click:()=>updates?.interact().catch(()=>{})},{type:'separator'},{label:'Site oficial',click:()=>openExternal(APP_URL)},{label:'Sobre a Órbita',click:()=>dialog.showMessageBox(mainWindow,{title:'Órbita Desktop',message:'Órbita '+app.getVersion(),detail:'Texto, voz e vídeo em uma janela própria. Requer conexão à internet. Não inicia automaticamente com o Windows.'})}]}]));
+  updates=createUpdateService({
+    enabled:app.isPackaged&&process.platform==='win32'&&!process.env.PORTABLE_EXECUTABLE_DIR&&fs.existsSync(path.join(path.dirname(app.getPath('exe')),'Uninstall Orbita.exe')),
+    version:app.getVersion(),loadUpdater:()=>require('electron-updater').autoUpdater,
+    isBusy:async()=>{
+      if(!mainWindow||mainWindow.isDestroyed()||picker||permissionDialog||closeDialog)return true;
+      if(!isAppURL(mainWindow.webContents.getURL()))return true;
+      // Read only a boolean from our own main frame. No native capability is exposed to the page.
+      try{return await mainWindow.webContents.executeJavaScript("!document.getElementById('call-dock') || !document.getElementById('call-dock').hidden");}catch{return true;}
+    },
+    onState:state=>{const item=Menu.getApplicationMenu()?.getMenuItemById('orbita-update-status');if(item)item.label=updateLabel(state);},
+    inform:message=>dialog.showMessageBox(mainWindow,{type:'info',title:'Atualizações da Órbita',message}),
+    confirmRestart:async version=>(await dialog.showMessageBox(mainWindow,{type:'question',title:'Atualização pronta',message:'Reiniciar para instalar a Órbita '+version+'?',detail:'Seus dados serão preservados. Você também pode continuar usando e encerrar pela bandeja para instalar depois.',buttons:['Continuar usando','Reiniciar e atualizar'],defaultId:0,cancelId:0,noLink:true})).response===1,
+    beforeInstall:()=>{quitting=true;}
+  });
+  const updateItem=Menu.getApplicationMenu()?.getMenuItemById('orbita-update-status');if(updateItem)updateItem.label=updateLabel(updates.state);
+  updates.start();
   await mainWindow.loadURL('orbita-desktop://ui/loading.html');if(!qa)mainWindow.show();
   mainWindow.loadURL(APP_URL).catch(()=>{});
 }

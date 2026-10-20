@@ -147,7 +147,7 @@ function renderChannels() {
     }
     node.orbitaChannel = channel;
     const name = node.querySelector('.channel-name'); if (name.textContent !== channel.name) name.textContent = channel.name;
-    node.querySelector('.channel-icon').textContent = channel.kind === 'text' ? '#' : '◖';
+    const icon=node.querySelector('.channel-icon'),symbol=channel.kind==='text'?'#':'◖';if(icon.textContent!==symbol)icon.textContent=symbol;
     node.classList.toggle('active', selected?.id === channel.id && !home); node.classList.toggle('connected', callChannel?.id === channel.id);
     node.setAttribute('aria-label', channel.name + ' · ' + (channel.kind === 'voice' ? 'Sala de voz' : 'Canal de texto'));
     node.setAttribute('aria-pressed', String(selected?.id === channel.id && !home));
@@ -535,8 +535,8 @@ function updateCallUI() {
 function updateSpeakingUI() {
   if(!room)return;
   const speaking=new Set([room.localParticipant,...room.remoteParticipants.values()].filter(p=>p.isSpeaking).map(p=>p.identity));
-  for(const card of document.querySelectorAll('.participant[data-participant-id]'))card.classList.toggle('speaking',speaking.has(card.dataset.participantId));
-  for(const tile of document.querySelectorAll('.media-tile[data-participant-id]'))tile.classList.toggle('speaking',speaking.has(tile.dataset.participantId));
+  for(const card of participantCards.values())card.classList.toggle('speaking',speaking.has(card.dataset.participantId));
+  for(const entry of callMedia.values())if(entry.tile)entry.tile.classList.toggle('speaking',speaking.has(entry.participantId));
 }
 async function leaveCall() {
   const previous = room;if(previous)microphoneSwitch.set(previous.localParticipant,false);room = null;callChannel = null;talkHeld=false;
@@ -1248,7 +1248,7 @@ createCommunity=()=>showDialog('Criar servidor',container=>{
 });
 $('btn-add-server').onclick=createCommunity;
 const initialRenderChannels=renderChannels;
-renderChannels=()=>{initialRenderChannels();for(const node of document.querySelectorAll('.channel')){const channel=channels.find(item=>item.id===node.dataset.channelId);if(channel){node.title=[channel.is_private?'Canal privado':null,channel.is_announcement?'Canal de anúncios':null,channel.default_for_new_members?'Canal padrão':null].filter(Boolean).join(' · ')||channel.description||channel.name;if(channel.is_private||channel.is_announcement){let mark=node.querySelector('.channel-kind-badge');if(!mark){mark=el('span','channel-kind-badge');node.append(mark);}mark.textContent=channel.is_private?'🔒':'📣';}else node.querySelector('.channel-kind-badge')?.remove();}}};
+renderChannels=()=>{initialRenderChannels();for(const node of channelNodes.values()){const channel=node.orbitaChannel;if(channel){node.title=[channel.is_private?'Canal privado':null,channel.is_announcement?'Canal de anúncios':null,channel.default_for_new_members?'Canal padrão':null].filter(Boolean).join(' · ')||channel.description||channel.name;if(channel.is_private||channel.is_announcement){let mark=node.querySelector('.channel-kind-badge');if(!mark){mark=el('span','channel-kind-badge');node.append(mark);}mark.textContent=channel.is_private?'🔒':'📣';}else node.querySelector('.channel-kind-badge')?.remove();}}};
 const priorCallUpdate=updateCallUI;
 updateCallUI=()=>{if(!room)talkHeld=false;priorCallUpdate();if(pttButton){const active=!!room&&callChannel?.id===selected?.id&&selected?.kind==='voice';pttButton.hidden=!active||!pushToTalk;pttButton.textContent=talkHeld?'Falando…':'Segure para falar';pttButton.setAttribute('aria-pressed',String(talkHeld));}};
 
