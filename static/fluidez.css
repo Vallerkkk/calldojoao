@@ -1,0 +1,13 @@
+/* Fluidez e pequenos acertos */
+html,body{overscroll-behavior:none}
+.app{height:100dvh}
+#message-list{overscroll-behavior:contain;overflow-anchor:auto}
+.message{content-visibility:auto;contain-intrinsic-size:auto 64px}
+button,.channel,.server-icon{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+:focus-visible{outline:2px solid var(--accent,#7c5cff);outline-offset:2px}
+.skeletons{padding:16px;display:grid;gap:14px}
+.skeleton{height:46px;border-radius:10px;background:linear-gradient(90deg,#ffffff0a,#ffffff18,#ffffff0a);background-size:200% 100%;animation:sk 1.2s linear infinite}
+@keyframes sk{to{background-position:-200% 0}}
+@media(hover:none){.message-actions{opacity:1}}
+@media(max-width:780px){button,.channel{min-height:40px}#message-input{font-size:16px}}
+@media(prefers-reduced-motion:reduce){.skeleton{animation:none}}
