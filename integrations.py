@@ -2,6 +2,7 @@ from uuid import UUID
 import httpx
 from fastapi import Depends, HTTPException
 from upstream import client_for, read_json
+from videochamada import install_videochamada
 
 def install(app, current_user, settings, make_token):
     async def rows(table, headers, params):
@@ -32,6 +33,8 @@ def install(app, current_user, settings, make_token):
             if not friends:
                 raise HTTPException(403, 'Adicionem-se como amigos para continuar.')
         return found[0]
+
+    install_videochamada(app, current_user, scope)
 
     @app.post('/api/conversations/{conversation_id}/join')
     async def private_join(conversation_id: UUID, identity=Depends(current_user)):

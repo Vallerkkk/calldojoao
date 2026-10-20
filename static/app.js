@@ -3,6 +3,7 @@ import { initEnhancements } from './enhancements.js?v=fluency-20261020-2';
 import { DraftStore, serialToggle } from './runtime-utils.js?v=fluency-20261020-2';
 import { ConversationCache, MessageOutbox, conversationKey, requestWithDeadline } from './chat-state.js?v=fluency-20261020-2';
 import { reconcileNodes, reserveImage, focusElement } from './dom-utils.js?v=fluency-20261020-2';
+import { choosePrivateCall } from './private-call-menu.js?v=videochamada-20261020-1';
 let enhancements;
 const drafts = new DraftStore(), pendingSends = new Set();
 const draftKey = target => session && target ? session.user.id + ':' + (target.private ? 'dm:' : 'channel:') + target.id : '';
@@ -779,7 +780,14 @@ async function startConversation(p,call=false){
   if(call){await checked(db.from('call_events').insert({conversation_id:c.id,caller_id:session.user.id}));$('join-call').click();}
 }
 async function openConversation(c,voice=false){const p=person(otherUser(c));await selectChannel({id:c.id,name:p.display_name,kind:voice?'voice':'text',private:true,friend:p});renderSocial();}
-$('private-call').onclick=()=>{const c=conversations.find(c=>c.id===selected?.id);if(c)startConversation(person(otherUser(c)),true).catch(e=>toast(errorText(e)));};
+$('private-call').onclick=()=>{
+  const c=conversations.find(c=>c.id===selected?.id);if(!c)return;
+  const integrated=()=>{$('app-dialog').close();return startConversation(person(otherUser(c)),true).catch(e=>toast(errorText(e)));};
+  if(!config?.videochamadaConfigured)return integrated();
+  choosePrivateCall({el,button,showDialog,apiFetch,state:()=>({session,selected,room}),insertInvitation:text=>{
+    const input=$('message-input');input.value+=(input.value?'\n':'')+text;drafts.set(draftKey(selected),input.value);input.dispatchEvent(new Event('input'));$('app-dialog').close();input.focus();
+  }},c,integrated);
+};
 function incomingCall(event){
   if(event.caller_id===session?.user.id||Date.now()-Date.parse(event.created_at)>60000)return;
   const p=person(event.caller_id);$('incoming-name').textContent=p.display_name+' está chamando…';$('incoming-call').hidden=false;

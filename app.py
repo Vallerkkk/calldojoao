@@ -16,6 +16,7 @@ from livekit import api
 from integrations import install
 from community_features import install_features
 from upstream import client_for, new_client, read_json
+from videochamada import configured as videochamada_configured
 
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / '.env')
@@ -60,6 +61,7 @@ def config():
     return {'supabaseUrl': s['SUPABASE_URL'],
             'supabaseKey': s['SUPABASE_PUBLISHABLE_KEY'],
             'configured': ready,
+            'videochamadaConfigured': videochamada_configured(),
             'storageConfigured': True, 'uploadLimit': 26214400,
             'pushPublicKey': os.getenv('VAPID_PUBLIC_KEY',''),
             'pushConfigured': all(os.getenv(k) for k in ('VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY','PUSH_TRANSPORT_KEY')),
