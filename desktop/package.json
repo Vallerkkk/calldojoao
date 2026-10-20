@@ -1,0 +1,28 @@
+{
+  "name": "orbita-desktop",
+  "version": "1.0.0",
+  "description": "Aplicativo desktop da comunidade Órbita",
+  "author": "Órbita",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.cjs",
+    "dist": "electron-builder --win nsis zip --x64 --publish never"
+  },
+  "devDependencies": {"electron": "44.9.2", "electron-builder": "26.15.3"},
+  "build": {
+    "appId": "com.orbita.desktop",
+    "productName": "Orbita",
+    "copyright": "Órbita",
+    "asar": true,
+    "electronDist": "node_modules/electron/dist",
+    "electronFuses": {"runAsNode": false, "enableNodeOptionsEnvironmentVariable": false, "enableNodeCliInspectArguments": false, "enableEmbeddedAsarIntegrityValidation": true, "onlyLoadAppFromAsar": true},
+    "directories": {"output": "../work/desktop-dist", "buildResources": "assets"},
+    "files": ["main.cjs", "policy.cjs", "picker-preload.cjs", "ui/**/*", "assets/icon.png", "assets/icon.ico", "package.json"],
+    "win": {"icon": "assets/icon.ico", "target": ["nsis", "zip"], "artifactName": "Orbita-${version}-${arch}.${ext}"},
+    "nsis": {"oneClick": false, "perMachine": false, "allowElevation": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "createStartMenuShortcut": true, "shortcutName": "Órbita", "runAfterFinish": false, "artifactName": "Orbita-Setup-${version}-${arch}.${ext}", "deleteAppDataOnUninstall": false},
+    "publish": null
+  }
+}
