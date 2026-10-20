@@ -145,7 +145,7 @@ drop policy if exists attachment_scope_insert on public.attachments;
 create policy attachment_scope_insert on public.attachments for insert to authenticated with check(owner_id=(select auth.uid()) and (
  exists(select 1 from public.channels c where c.id=channel_id) or exists(select 1 from public.conversations c where c.id=conversation_id)
 ));
--- storage_proof é validada pelo servidor antes de acessar o Drive: um cliente não pode forjar um file_id.
+-- Metadados apontam para arquivos privados; as políticas do Storage controlam leitura e gravação.
 
 alter table public.messages add column if not exists attachment_id uuid references public.attachments(id);
 alter table public.messages add column if not exists pinned boolean not null default false;
@@ -361,3 +361,87 @@ commit;
 
 drop policy if exists creator_invites_deny_direct_access on orbita_private.creator_invites;
 create policy creator_invites_deny_direct_access on orbita_private.creator_invites for all to anon,authenticated using(false)with check(false);
+
+
+-- Arquivos privados do Órbita em Supabase Storage (sem Google Drive).
+alter table public.attachments add column if not exists storage_path text;
+
+insert into storage.buckets (id,name,public,file_size_limit)
+values ('orbita-files','orbita-files',false,26214400)
+on conflict (id) do update set name=excluded.name,public=false,file_size_limit=excluded.file_size_limit;
+
+drop policy if exists orbita_files_read on storage.objects;
+create policy orbita_files_read on storage.objects for select to authenticated using (
+  bucket_id='orbita-files' and (
+    ((storage.foldername(name))[1]='channels' and exists (
+      select 1 from public.channels c where c.id::text=(storage.foldername(name))[2] and c.kind='text'))
+    or ((storage.foldername(name))[1]='conversations' and exists (
+      select 1 from public.conversations c where c.id::text=(storage.foldername(name))[2]
+      and (select auth.uid()) in (c.user_a,c.user_b)))
+  )
+);
+
+drop policy if exists orbita_files_upload on storage.objects;
+create policy orbita_files_upload on storage.objects for insert to authenticated with check (
+  bucket_id='orbita-files' and (storage.foldername(name))[3]=(select auth.uid())::text and (
+    ((storage.foldername(name))[1]='channels' and exists (
+      select 1 from public.channels c where c.id::text=(storage.foldername(name))[2] and c.kind='text'))
+    or ((storage.foldername(name))[1]='conversations' and exists (
+      select 1 from public.conversations c where c.id::text=(storage.foldername(name))[2]
+      and (select auth.uid()) in (c.user_a,c.user_b)))
+  )
+);
+
+drop policy if exists orbita_files_delete_owner on storage.objects;
+create policy orbita_files_delete_owner on storage.objects for delete to authenticated using (
+  bucket_id='orbita-files' and (storage.foldername(name))[3]=(select auth.uid())::text and (
+    ((storage.foldername(name))[1]='channels' and exists (
+      select 1 from public.channels c where c.id::text=(storage.foldername(name))[2] and c.kind='text'))
+    or ((storage.foldername(name))[1]='conversations' and exists (
+      select 1 from public.conversations c where c.id::text=(storage.foldername(name))[2]
+      and (select auth.uid()) in (c.user_a,c.user_b)))
+  )
+);
+
+drop policy if exists attachment_scope_read on public.attachments;
+create policy attachment_scope_read on public.attachments for select to authenticated using (
+  (channel_id is not null and exists (select 1 from public.channels c where c.id=attachments.channel_id and c.kind='text'))
+  or (conversation_id is not null and exists (select 1 from public.conversations c where c.id=attachments.conversation_id
+    and (select auth.uid()) in (c.user_a,c.user_b)))
+);
+
+drop policy if exists attachment_scope_insert on public.attachments;
+create policy attachment_scope_insert on public.attachments for insert to authenticated with check (
+  owner_id=(select auth.uid()) and storage_path is not null and file_id=storage_path and storage_proof='supabase-private-v1'
+  and (((channel_id is not null and conversation_id is null) and exists (
+    select 1 from public.channels c where c.id=attachments.channel_id and c.kind='text'))
+    or ((conversation_id is not null and channel_id is null) and exists (
+      select 1 from public.conversations c where c.id=attachments.conversation_id and (select auth.uid()) in (c.user_a,c.user_b))))
+);
+
+drop policy if exists attachment_owner_delete on public.attachments;
+create policy attachment_owner_delete on public.attachments for delete to authenticated using (owner_id=(select auth.uid()));
+
+
+-- Cover foreign keys used by joins and deletes without removing existing indexes.
+create index if not exists creator_invites_claimed_by_idx on orbita_private.creator_invites(claimed_by);
+create index if not exists attachments_owner_id_idx on public.attachments(owner_id);
+create index if not exists call_events_caller_id_idx on public.call_events(caller_id);
+create index if not exists channels_created_by_idx on public.channels(created_by);
+create index if not exists communities_created_by_idx on public.communities(created_by);
+create index if not exists direct_messages_attachment_id_idx on public.direct_messages(attachment_id);
+create index if not exists direct_messages_author_id_idx on public.direct_messages(author_id);
+create index if not exists direct_messages_reply_to_idx on public.direct_messages(reply_to);
+create index if not exists messages_attachment_id_idx on public.messages(attachment_id);
+create index if not exists messages_author_id_idx on public.messages(author_id);
+create index if not exists messages_reply_to_idx on public.messages(reply_to);
+create index if not exists music_state_attachment_id_idx on public.music_state(attachment_id);
+create index if not exists music_state_updated_by_idx on public.music_state(updated_by);
+create index if not exists poll_votes_user_id_idx on public.poll_votes(user_id);
+create index if not exists reactions_user_id_idx on public.reactions(user_id);
+
+
+-- Privilégios necessários para os anexos privados.
+grant select(storage_path) on public.attachments to authenticated;
+grant insert(storage_path) on public.attachments to authenticated;
+grant delete on public.attachments to authenticated;

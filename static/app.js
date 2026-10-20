@@ -4,7 +4,7 @@ let subscription, generation = 0, messages = new Map(), oldest, hasMore = false,
 let room, callChannel, joining = false, shuttingDown = false;
 // Metas de qualidade: o navegador e o LiveKit podem reduzir conforme o dispositivo e a rede.
 const CAMERA_CAPTURE = {resolution: {width:1920, height:1080, frameRate:30}};
-const SCREEN_CAPTURE = {resolution: {width:1920, height:1080, frameRate:30}, contentHint:'detail'};
+const SCREEN_CAPTURE = {resolution: {width:1920, height:1080, frameRate:30}, contentHint:'detail', audio:true, systemAudio:'include', surfaceSwitching:'include'};
 const CAMERA_PUBLISH = {videoEncoding: {maxBitrate:4_500_000, maxFramerate:30}, degradationPreference:'balanced'};
 const SCREEN_PUBLISH = {screenShareEncoding: {maxBitrate:6_000_000, maxFramerate:30}, degradationPreference:'maintain-resolution'};
 let toastTimer;
@@ -206,15 +206,16 @@ function onTrack(track, participant) {
 function removeTrack(track) {
   track.detach().forEach(node => { const tile = node.closest('.media-tile'); if (tile) tile.remove(); else node.remove(); });
 }
+function qualityText(quality){return ({excellent:'Ótima conexão',good:'Boa conexão',poor:'Conexão instável',unknown:'Conectando'})[String(quality||'unknown').toLowerCase()]||'Conectando';}
 function updateCallUI() {
   const here = !!room && callChannel?.id === selected?.id && selected?.kind === 'voice';
   $('call-dock').hidden=!room;$('dock-name').textContent=callChannel?.name||'';
   $('join-call').hidden = here; $('join-call').disabled = joining || !config?.callsConfigured;
   $('join-call').textContent = joining ? 'Conectando…' : (room ? 'Trocar para esta sala ↗' : 'Entrar na sala ↗');
   $('active-controls').hidden = !here; $('empty-call').hidden = here;
-  $('call-status').textContent = !config?.callsConfigured ? 'As chamadas precisam das credenciais LIVEKIT no .env.'
-    : here ? 'Você está conectado. Sua câmera começa desligada.'
-    : room ? `Você continua conectado em ${callChannel.name}.` : 'Entre na sala e faça parte da conversa.';
+  $('call-status').textContent = !config?.callsConfigured ? 'As chamadas não estão configuradas neste momento.'
+    : here ? `${room.remoteParticipants.size+1} participante${room.remoteParticipants.size===0?'':'s'} · ${qualityText(room.localParticipant.connectionQuality)} · câmera desligada por padrão.`
+    : room ? `Conectado a ${callChannel.name}. Você pode continuar ouvindo enquanto navega.` : 'Entre na sala para conversar por voz, vídeo ou tela.';
   $('participants').hidden = !here; $('media-grid').hidden = !here;
   $('participants').replaceChildren();
   $('voice-stage').setAttribute('aria-label',here?'Chamada conectada':'Sala de voz');
@@ -223,8 +224,9 @@ function updateCallUI() {
     const participants = [room.localParticipant, ...room.remoteParticipants.values()];
     for (const participant of participants) {
       const card = el('div', 'participant' + (participant.isSpeaking ? ' speaking' : ''));
+      const quality=qualityText(participant.connectionQuality);
       card.append(el('span', 'avatar', initials(participant.name)), el('strong', '', participant.name || 'Participante'),
-        el('small', '', participant.isMicrophoneEnabled ? 'Microfone ligado' : 'Microfone desligado'));
+        el('small', '', `${participant.isMicrophoneEnabled ? 'Microfone ligado' : 'Microfone desligado'} · ${quality}`));
       $('participants').append(card);
     }
     for (const [id, enabled] of [['mic',room.localParticipant.isMicrophoneEnabled],['camera',room.localParticipant.isCameraEnabled],['screen',room.localParticipant.isScreenShareEnabled]]) {
@@ -264,7 +266,7 @@ $('join-call').onclick = async () => {
         screenShareSimulcastLayers:[ScreenSharePresets.h720fps15],
       },
     }); room = connected; callChannel = target;
-    connected.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => onTrack(track, participant)).on(RoomEvent.TrackUnsubscribed, removeTrack)
+    connected.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {onTrack(track, participant);updateCallUI();}).on(RoomEvent.TrackUnsubscribed, track => {removeTrack(track);updateCallUI();})
       .on(RoomEvent.LocalTrackPublished, publication => { if (publication.track?.kind === 'video') onTrack(publication.track, connected.localParticipant); updateCallUI(); })
       .on(RoomEvent.LocalTrackUnpublished, publication => {
         if (publication.track) removeTrack(publication.track);
@@ -325,7 +327,7 @@ let noise = localStorage.getItem('orbita-noise') !== 'false', deafened = false;
 const audioCapture = () => ({noiseSuppression:noise, echoCancellation:true, autoGainControl:true, channelCount:1});
 const scopeKey = target => target?.private ? 'conversation_id' : 'channel_id';
 const messageTable = () => selected?.private ? 'direct_messages' : 'messages';
-const messageFields = '*,profiles!author_id(display_name,username,avatar_color),attachments(id,name,mime_type,size),reactions(id,emoji,user_id),poll_votes(id,user_id,option_index)';
+const messageFields = '*,profiles!author_id(display_name,username,avatar_color),attachments(id,owner_id,storage_path,file_id,name,mime_type,size),reactions(id,emoji,user_id),poll_votes(id,user_id,option_index)';
 const otherUser = c => c.user_a === session.user.id ? c.user_b : c.user_a;
 const person = id => people.find(p => p.id === id) || {id,display_name:'Participante',username:'',avatar_color:'#8b80ff'};
 function button(label, action, css = 'soft-button') { const b = el('button', css, label); b.type='button'; b.onclick=()=>Promise.resolve(action()).catch(e=>toast(errorText(e))); return b; }
@@ -481,7 +483,18 @@ async function refreshMessages(){
   try{const data=await checked(db.from(table).select(messageFields).eq(scopeKey(target),target.id).order('created_at',{ascending:false}).limit(60));if(version!==generation)return;for(const m of data)messages.set(m.id,m);renderMessages();}catch(e){toast(errorText(e));}
 }
 async function messageAction(message,action){
-  if(action==='delete'){showDialog('Excluir mensagem',container=>{container.append(el('p','','Deseja excluir esta mensagem?'),button('Excluir',async()=>{await checked(db.from(messageTable()).delete().eq('id',message.id));messages.delete(message.id);$('app-dialog').close();renderMessages();},'danger'));});return;}
+  if(action==='delete'){showDialog('Excluir mensagem',container=>{container.append(el('p','','Deseja excluir esta mensagem?'),button('Excluir',async()=>{
+    await checked(db.from(messageTable()).delete().eq('id',message.id));
+    if(message.attachments?.owner_id===session.user.id){
+      const path=message.attachments.storage_path||message.attachments.file_id;
+      if(path){
+        const music=await checked(db.from('music_state').select('id').eq('attachment_id',message.attachments.id).limit(1));
+        if(music.length){toast('Mensagem removida; o anexo continua disponível no player de música.');}
+        else{const {error}=await db.storage.from('orbita-files').remove([path]);if(error){toast('Mensagem removida; o anexo ficou guardado.');}else await checked(db.from('attachments').delete().eq('id',message.attachments.id).eq('owner_id',session.user.id));}
+      }
+    }
+    messages.delete(message.id);$('app-dialog').close();renderMessages();
+  },'danger'));});return;}
   if(action==='pin'){await checked(db.from(messageTable()).update({pinned:!message.pinned}).eq('id',message.id));message.pinned=!message.pinned;renderMessages();return;}
   showDialog('Editar mensagem',container=>{const form=el('form'),input=inputField(form,'Mensagem',message.content,4000),save=el('button','primary','Salvar');save.type='submit';form.append(save);container.append(form);form.onsubmit=async e=>{e.preventDefault();try{await checked(db.from(messageTable()).update({content:input.value.trim()}).eq('id',message.id));message.content=input.value.trim();$('app-dialog').close();renderMessages();}catch(error){toast(errorText(error));}};});
 }
@@ -492,20 +505,35 @@ async function react(message,emoji){
   await refreshMessages();
 }
 async function downloadAttachment(a,play=false){
-  const response=await apiFetch(`/api/attachments/${a.id}/download`),blob=await response.blob(),url=URL.createObjectURL(new Blob([blob],{type:play?a.mime_type:'application/octet-stream'}));
+  const path=a.storage_path||a.file_id;
+  if(!path)throw Error('Este arquivo não está disponível no armazenamento do Supabase.');
+  const {data:blob,error}=await db.storage.from('orbita-files').download(path);
+  if(error)throw error;
+  const url=URL.createObjectURL(new Blob([blob],{type:a.mime_type||'application/octet-stream'}));
   if(play)return url;
   const link=el('a');link.href=url;link.download=a.name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 async function uploadFile(file,target){
-  if(!config.storageConfigured)throw Error('Envio de arquivos indisponível nesta versão.');
-  if(file.size>config.uploadLimit)throw Error('Escolha um arquivo de até 25 MB.');
-  return (await apiFetch(`/api/attachments?target_kind=${target.private?'direct':'channel'}&target_id=${target.id}`,{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream','X-File-Name':encodeURIComponent(file.name)},body:file})).json();
+  if(!config.storageConfigured)throw Error('O armazenamento de arquivos ainda não está pronto.');
+  if(file.size>config.uploadLimit)throw Error('O limite é 25 MB por arquivo.');
+  if(!target||!['text','voice'].includes(target.kind))throw Error('Escolha um canal ou conversa antes de enviar.');
+  const kind=target.private?'conversations':'channels';
+  const path=`${kind}/${target.id}/${session.user.id}/${crypto.randomUUID()}`;
+  const mime=file.type||'application/octet-stream';
+  const {error:uploadError}=await db.storage.from('orbita-files').upload(path,file,{cacheControl:'3600',contentType:mime,upsert:false});
+  if(uploadError)throw uploadError;
+  try{
+    const row={owner_id:session.user.id,channel_id:target.private?null:target.id,conversation_id:target.private?target.id:null,
+      file_id:path,storage_path:path,storage_proof:'supabase-private-v1',name:file.name.slice(0,180),mime_type:mime.slice(0,120),size:file.size};
+    return await checked(db.from('attachments').insert(row).select('id,owner_id,channel_id,conversation_id,file_id,storage_path,name,mime_type,size').single());
+  }catch(error){await db.storage.from('orbita-files').remove([path]);throw error;}
 }
-$('attach-file').onclick=()=>{if(!config.storageConfigured)return toast('Envio de arquivos indisponível nesta versão.');$('file-input').click();};
+$('attach-file').onclick=()=>{if(!config.storageConfigured)return toast('O Storage do Supabase ainda não está configurado.');$('file-input').click();};
 $('file-input').onchange=async()=>{
   const file=$('file-input').files[0],target=selected,version=generation;if(!file)return;
-  $('attach-file').disabled=true;try{toast('Enviando arquivo…');const attachment=await uploadFile(file,target);
-    await checked(db.from(target.private?'direct_messages':'messages').insert({[scopeKey(target)]:target.id,author_id:session.user.id,content:'📎 '+attachment.name,attachment_id:attachment.id}));
+  $('attach-file').disabled=true;try{toast('Enviando para o armazenamento privado…');const attachment=await uploadFile(file,target);
+    try{await checked(db.from(target.private?'direct_messages':'messages').insert({[scopeKey(target)]:target.id,author_id:session.user.id,content:'📎 '+attachment.name,attachment_id:attachment.id}));}
+    catch(error){await db.from('attachments').delete().eq('id',attachment.id).eq('owner_id',session.user.id);await db.storage.from('orbita-files').remove([attachment.storage_path]);throw error;}
     if(version===generation)await refreshMessages();toast('Arquivo enviado.');
   }catch(e){toast(errorText(e));}finally{$('attach-file').disabled=false;$('file-input').value='';}
 };
@@ -515,7 +543,7 @@ async function watchMusic(target){
   const version=++musicVersion;musicState=null;audioPlayer.pause();audioPlayer.removeAttribute('src');if(musicUrl){URL.revokeObjectURL(musicUrl);musicUrl=null;}
   if(musicSubscription)await db.removeChannel(musicSubscription);
   renderMusicStatus('Escolha um áudio para ouvir juntos');$('music-play').textContent='▶';
-  const reload=async()=>{try{const data=await checked(db.from('music_state').select('*,attachments(id,name,mime_type,size)').eq(scopeKey(target),target.id).maybeSingle());if(version===musicVersion)await applyMusic(data,version);}catch(e){toast(errorText(e));}};
+  const reload=async()=>{try{const data=await checked(db.from('music_state').select('*,attachments(id,owner_id,storage_path,file_id,name,mime_type,size)').eq(scopeKey(target),target.id).maybeSingle());if(version===musicVersion)await applyMusic(data,version);}catch(e){toast(errorText(e));}};
   musicSubscription=db.channel('music-'+target.id+'-'+version).on('postgres_changes',{event:'*',schema:'public',table:'music_state',filter:`${scopeKey(target)}=eq.${target.id}`},reload).subscribe(status=>{if(status==='SUBSCRIBED')reload();});
 }
 async function applyMusic(state,version){
@@ -534,7 +562,7 @@ async function setMusic(values){
 $('music-play').onclick=()=>setMusic({playing:!musicState?.playing,position:audioPlayer.currentTime}).catch(e=>toast(errorText(e)));
 $('music-listen').onclick=()=>audioPlayer.play().catch(()=>toast('Escolha uma música primeiro.'));
 $('music-volume').oninput=e=>{audioPlayer.volume=Number(e.target.value);};
-$('music-upload').onclick=()=>{if(!config.storageConfigured)return toast('Envio de arquivos indisponível nesta versão.');$('music-input').click();};
+$('music-upload').onclick=()=>{if(!config.storageConfigured)return toast('O Storage do Supabase ainda não está configurado.');$('music-input').click();};
 $('music-input').onchange=async()=>{
   const file=$('music-input').files[0],target=selected,version=musicVersion;if(!file||!target)return;
   $('music-upload').disabled=true;
@@ -686,7 +714,7 @@ function openManagement(){showDialog(isAdmin()?'Administração do site':'Config
 });}
 function editChannel(channel){showDialog('Editar canal',container=>{const form=el('form'),name=inputField(form,'Nome',channel.name,40),description=inputField(form,'Descrição',channel.description,240),save=el('button','primary','Salvar');save.type='submit';form.append(save);container.append(form);form.onsubmit=async e=>{e.preventDefault();try{await checked(db.from('channels').update({name:name.value.trim(),description:description.value.trim()}).eq('id',channel.id));channel.name=name.value.trim();channel.description=description.value.trim();renderChannels();if(selected?.id===channel.id)await selectChannel(channel);$('app-dialog').close();}catch(error){toast(errorText(error));}};
 container.append(button('Excluir canal e seu histórico',()=>showDialog('Excluir canal',box=>{box.append(el('p','','A exclusão remove permanentemente o histórico deste canal. Confirme somente se desejar apagar esses dados.'),button('Excluir permanentemente',async()=>{await checked(db.from('channels').delete().eq('id',channel.id));channels=channels.filter(ch=>ch.id!==channel.id);$('app-dialog').close();renderChannels();if(selected?.id===channel.id)showFriends();},'danger'));}),'danger'));});}
-function openCloud(){showDialog('Sobre esta versão',container=>{container.append(el('p','','Contas e mensagens no Supabase. Chamadas com LiveKit. Sem integração Google Cloud ou Drive. Uploads de arquivos e músicas estão indisponíveis nesta versão.'));});}
+function openCloud(){showDialog('Sobre esta versão',container=>{container.append(el('p','','Contas, mensagens e arquivos privados no Supabase. Chamadas de voz, vídeo e compartilhamento de tela com LiveKit. O áudio da tela depende do navegador e da opção marcada ao compartilhar.'));});}
 $('dd-boost-btn').onclick=openCloud;$('banner-action-btn').onclick=openCloud;$('drive-info').onclick=openCloud;
 $('up-mic-btn').onclick=()=>$('mic').click();$('up-deafen-btn').onclick=()=>$('deafen').click();$('vb-mic').onclick=()=>$('mic').click();$('vb-video').onclick=()=>$('camera').click();$('dock-name').onclick=()=>{if(callChannel)selectChannel(callChannel);};
 $('back-to-call').onclick=()=>{if(selected?.private){const c=conversations.find(c=>c.id===selected.id);if(c)openConversation(c);}else{const c=channels.find(c=>c.community_id===activeCommunity&&c.kind==='text');if(c)selectChannel(c);}};

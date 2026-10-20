@@ -6,7 +6,7 @@ A interface vem do index.html fornecido na pasta jesus. Login, amigos, mensagens
 
 A configuração local mantém o projeto Supabase da Órbita já preparado, com as contas existentes. O outro projeto presente no protótipo possui um esquema incompatível. supabase.sql documenta o esquema para uma instalação nova.
 
-Não há integração Google Cloud, Firebase ou Drive. Uploads de arquivos e músicas estão desabilitados. O áudio da tela depende da autorização na janela do navegador, preferencialmente compartilhando uma aba.
+Não há integração Google Cloud, Firebase ou Drive. Arquivos e músicas usam um bucket privado do Supabase Storage; o plano gratuito inclui até 1 GB armazenado e o aplicativo limita cada arquivo a 25 MB. O áudio da tela depende da autorização na janela do navegador, preferencialmente compartilhando uma aba.
 
 VallerJP mantém o cargo registrado no banco. Kalil deve aceitar o convite privado já gerado; apenas escolher esse nome não concede administração.
 
