@@ -4,9 +4,45 @@ let subscription, generation = 0, messages = new Map(), oldest, hasMore = false,
 let room, callChannel, joining = false, shuttingDown = false;
 // Metas de qualidade: o navegador e o LiveKit podem reduzir conforme o dispositivo e a rede.
 const CAMERA_CAPTURE = {resolution: {width:1920, height:1080, frameRate:30}};
-const SCREEN_CAPTURE = {resolution: {width:1920, height:1080, frameRate:30}, contentHint:'detail', audio:true, systemAudio:'include', surfaceSwitching:'include'};
+const SCREEN_CAPTURE = {resolution: {width:1920, height:1080, frameRate:30}, contentHint:'detail'};
 const CAMERA_PUBLISH = {videoEncoding: {maxBitrate:4_500_000, maxFramerate:30}, degradationPreference:'balanced'};
+
 const SCREEN_PUBLISH = {screenShareEncoding: {maxBitrate:6_000_000, maxFramerate:30}, degradationPreference:'maintain-resolution'};
+
+// ===== CALL ENHANCEMENTS =====
+const participantVolumes = JSON.parse(localStorage.getItem('orbita-volumes') || '{}');
+function getVolume(identity) { return participantVolumes[identity] ?? 1; }
+function setVolume(identity, vol) {
+  participantVolumes[identity] = Math.max(0, Math.min(1, +vol));
+  localStorage.setItem('orbita-volumes', JSON.stringify(participantVolumes));
+  document.querySelectorAll(`audio[data-participant="${CSS.escape(identity)}"]`).forEach(a => a.volume = participantVolumes[identity]);
+}
+
+const SCREEN_PRESETS = {
+  '720p15': { resolution: {width:1280, height:720, frameRate:15}, bitrate: 1_500_000 },
+  '1080p15': { resolution: {width:1920, height:1080, frameRate:15}, bitrate: 3_000_000 },
+  '1080p30': { resolution: {width:1920, height:1080, frameRate:30}, bitrate: 5_000_000 },
+  '1440p15': { resolution: {width:2560, height:1440, frameRate:15}, bitrate: 6_000_000 }
+};
+let currentScreenPreset = localStorage.getItem('orbita-screen-preset') || '1080p30';
+
+function showReactionOverlay(participantId, emoji) {
+  document.querySelectorAll(`.media-tile[data-participant="${CSS.escape(participantId)}"], .participant[data-participant="${CSS.escape(participantId)}"]`).forEach(tile => {
+    const overlay = el('div', 'reaction-overlay', emoji);
+    if (getComputedStyle(tile).position === 'static') tile.style.position = 'relative';
+    tile.append(overlay);
+    setTimeout(() => overlay.remove(), 2800);
+  });
+}
+
+document.addEventListener('keydown', e => {
+  if (!room || e.target.matches('input, textarea, [contenteditable]')) return;
+  if (e.key === 'm' || e.key === 'M') { e.preventDefault(); $('mic')?.click(); }
+  if (e.key === 'v' || e.key === 'V') { e.preventDefault(); $('camera')?.click(); }
+  if ((e.key === 's' || e.key === 'S') && e.shiftKey) { e.preventDefault(); $('screen')?.click(); }
+  if (e.key === 'd' || e.key === 'D') { e.preventDefault(); $('deafen')?.click(); }
+});
+
 let toastTimer;
 function toast(message) {
   $('toast').textContent = message; $('toast').hidden = false;
@@ -181,7 +217,7 @@ $('message-form').onsubmit = async event => {
 };
 
 function onTrack(track, participant) {
-  if (track.kind === 'video' && $('media-grid').querySelector(`[data-track="${track.sid}"]`)) return;
+  if (track.kind === 'video' && document.querySelector(`[data-track="${track.sid}"]`)) return;
   const media = track.attach(); media.dataset.track = track.sid;
   if (track.kind === 'video') {
     const isScreen = track.source === 'screen_share';
@@ -199,34 +235,69 @@ function onTrack(track, participant) {
         else toast('Este navegador não oferece tela cheia para este vídeo.');
       } catch (error) { toast(errorText(error)); }
     };
-    caption.append(expand); figure.append(media, caption);
+    // Volume control for remote audio of this participant
+    if (!participant.isLocal) {
+      const volWrap = el('label', 'tile-volume');
+      const vol = el('input'); vol.type = 'range'; vol.min = 0; vol.max = 1; vol.step = 0.05;
+      vol.value = getVolume(participant.identity || participant.sid);
+      vol.title = 'Volume';
+      vol.oninput = () => setVolume(participant.identity || participant.sid, vol.value);
+      volWrap.append(document.createTextNode('🔊 '), vol);
+      caption.append(volWrap);
+    }
+    // PiP button for main tiles
+    const pip = el('button', 'pip-btn', 'PiP');
+    pip.type = 'button';
+    pip.onclick = () => media.requestPictureInPicture?.().catch(() => toast('PiP não suportado'));
+    caption.append(pip);
+    caption.append(expand);
+    figure.dataset.participant = participant.identity || participant.sid;
+    if (participant.isLocal) figure.dataset.local = 'true';
+    figure.append(media, caption);
     $('media-grid').append(figure);
-  } else { media.dataset.remoteAudio = 'true';media.muted=deafened; document.body.append(media); }
+    if (participant.isLocal) applyMirror();
+    updateMediaLayout();
+  } else {
+    // Áudio (microfone ou áudio da tela)
+    media.dataset.remoteAudio = 'true';
+    media.dataset.participant = participant.identity || participant.sid;
+    media.muted = deafened;
+    media.volume = getVolume(participant.identity || participant.sid);
+    media.autoplay = true;
+    media.playsInline = true;
+    document.body.append(media);
+    media.play().catch(() => {});
+  }
 }
 function removeTrack(track) {
   track.detach().forEach(node => { const tile = node.closest('.media-tile'); if (tile) tile.remove(); else node.remove(); });
+  updateMediaLayout();
 }
-function qualityText(quality){return ({excellent:'Ótima conexão',good:'Boa conexão',poor:'Conexão instável',unknown:'Conectando'})[String(quality||'unknown').toLowerCase()]||'Conectando';}
 function updateCallUI() {
   const here = !!room && callChannel?.id === selected?.id && selected?.kind === 'voice';
   $('call-dock').hidden=!room;$('dock-name').textContent=callChannel?.name||'';
   $('join-call').hidden = here; $('join-call').disabled = joining || !config?.callsConfigured;
   $('join-call').textContent = joining ? 'Conectando…' : (room ? 'Trocar para esta sala ↗' : 'Entrar na sala ↗');
   $('active-controls').hidden = !here; $('empty-call').hidden = here;
-  $('call-status').textContent = !config?.callsConfigured ? 'As chamadas não estão configuradas neste momento.'
-    : here ? `${room.remoteParticipants.size+1} participante${room.remoteParticipants.size===0?'':'s'} · ${qualityText(room.localParticipant.connectionQuality)} · câmera desligada por padrão.`
-    : room ? `Conectado a ${callChannel.name}. Você pode continuar ouvindo enquanto navega.` : 'Entre na sala para conversar por voz, vídeo ou tela.';
-  $('participants').hidden = !here; $('media-grid').hidden = !here;
+  $('call-status').textContent = !config?.callsConfigured ? 'As chamadas precisam das credenciais LIVEKIT no .env.'
+    : here ? 'Você está conectado. Sua câmera começa desligada.'
+    : room ? `Você continua conectado em ${callChannel.name}.` : 'Entre na sala e faça parte da conversa.';
+  $('participants').hidden = !here; $('media-grid').hidden = !here; updateMediaLayout();
   $('participants').replaceChildren();
   $('voice-stage').setAttribute('aria-label',here?'Chamada conectada':'Sala de voz');
   publishVoicePresence().catch(()=>{});
   if (room) {
     const participants = [room.localParticipant, ...room.remoteParticipants.values()];
     for (const participant of participants) {
-      const card = el('div', 'participant' + (participant.isSpeaking ? ' speaking' : ''));
-      const quality=qualityText(participant.connectionQuality);
+      const card = el('div', 'participant' + (participant.isSpeaking ? ' speaking speaking-ring' : ''));
+      card.dataset.participant = participant.identity || participant.sid;
+      // Connection quality badge
+      const q = participant.connectionQuality || 'unknown';
+      const badge = el('span', 'quality-badge q-' + q, q === 'excellent' ? '●' : q === 'good' ? '●' : '●');
+      badge.title = 'Qualidade: ' + q;
+      card.append(badge);
       card.append(el('span', 'avatar', initials(participant.name)), el('strong', '', participant.name || 'Participante'),
-        el('small', '', `${participant.isMicrophoneEnabled ? 'Microfone ligado' : 'Microfone desligado'} · ${quality}`));
+        el('small', '', participant.isMicrophoneEnabled ? 'Microfone ligado' : 'Microfone desligado'));
       $('participants').append(card);
     }
     for (const [id, enabled] of [['mic',room.localParticipant.isMicrophoneEnabled],['camera',room.localParticipant.isCameraEnabled],['screen',room.localParticipant.isScreenShareEnabled]]) {
@@ -266,7 +337,7 @@ $('join-call').onclick = async () => {
         screenShareSimulcastLayers:[ScreenSharePresets.h720fps15],
       },
     }); room = connected; callChannel = target;
-    connected.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {onTrack(track, participant);updateCallUI();}).on(RoomEvent.TrackUnsubscribed, track => {removeTrack(track);updateCallUI();})
+    connected.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => onTrack(track, participant)).on(RoomEvent.TrackUnsubscribed, removeTrack)
       .on(RoomEvent.LocalTrackPublished, publication => { if (publication.track?.kind === 'video') onTrack(publication.track, connected.localParticipant); updateCallUI(); })
       .on(RoomEvent.LocalTrackUnpublished, publication => {
         if (publication.track) removeTrack(publication.track);
@@ -295,8 +366,31 @@ for (const [id, property, method] of [['mic','isMicrophoneEnabled','setMicrophon
       const enabled = !room.localParticipant[property];
       if (id === 'camera') await room.localParticipant.setCameraEnabled(enabled, CAMERA_CAPTURE, CAMERA_PUBLISH);
       else if (id === 'screen') {
-        await room.localParticipant.setScreenShareEnabled(enabled, SCREEN_CAPTURE, SCREEN_PUBLISH);
-        if(enabled&&SCREEN_CAPTURE.audio&&![...room.localParticipant.audioTrackPublications.values()].some(p=>p.source==='screen_share_audio'))toast('A tela foi compartilhada sem áudio. Escolha uma aba e marque Compartilhar áudio na janela do navegador.');
+        if (enabled) {
+          const preset = SCREEN_PRESETS[currentScreenPreset] || SCREEN_PRESETS['1080p30'];
+          const captureOpts = {
+            resolution: preset.resolution,
+            contentHint: 'detail',
+            audio: screenCheck.checked,
+            systemAudio: screenCheck.checked ? 'include' : 'exclude',
+            surfaceSwitching: 'include',
+            selfBrowserSurface: 'exclude',
+            suppressLocalAudioPlayback: true
+          };
+          const publishOpts = {
+            screenShareEncoding: { maxBitrate: preset.bitrate, maxFramerate: preset.resolution.frameRate },
+            degradationPreference: 'maintain-resolution'
+          };
+          await room.localParticipant.setScreenShareEnabled(true, captureOpts, publishOpts);
+          setTimeout(() => {
+            const hasAudio = [...room.localParticipant.audioTrackPublications.values()].some(p => p.source === 'screen_share_audio');
+            if (screenCheck.checked && !hasAudio) {
+              toast('Áudio da tela não capturado. Selecione uma ABA e marque "Compartilhar áudio da aba" na janela do navegador.');
+            }
+          }, 800);
+        } else {
+          await room.localParticipant.setScreenShareEnabled(false);
+        }
       }
       else await room.localParticipant[method](enabled, audioCapture());
     }
@@ -307,6 +401,48 @@ for (const [id, property, method] of [['mic','isMicrophoneEnabled','setMicrophon
 window.addEventListener('pagehide', () => { shuttingDown = true;audioPlayer.pause();if(presenceChannel)presenceChannel.untrack(); if (room) room.disconnect(); });
 window.addEventListener('pageshow', () => { shuttingDown = false; });
 
+
+
+// Mirror local camera
+let mirrorLocal = localStorage.getItem('orbita-mirror') !== 'false';
+function applyMirror() {
+  document.querySelectorAll('.media-tile[data-local="true"] video').forEach(v => v.classList.toggle('mirror', mirrorLocal));
+}
+
+
+let layoutTimer;
+function updateMediaLayout() {
+  clearTimeout(layoutTimer);
+  layoutTimer = setTimeout(doUpdateMediaLayout, 50);
+}
+function doUpdateMediaLayout() {
+  const stage = $('voice-stage');
+  const main = $('main-stage');
+  const screens = [...document.querySelectorAll('.media-screen')];
+  const hasScreen = screens.length > 0;
+  const mode = localStorage.getItem('orbita-layout') || 'stage';
+  stage.classList.toggle('stage-mode', hasScreen && mode === 'stage');
+  stage.classList.toggle('gallery-mode', !hasScreen || mode === 'gallery');
+  $('layout-toggle').hidden = !hasScreen;
+  $('layout-toggle').textContent = mode === 'stage' ? 'Ver Gallery' : 'Ver Stage';
+  if (hasScreen && mode === 'stage') {
+    // Move primary screen to main stage
+    if (screens[0].parentElement !== main) {
+      main.replaceChildren(screens[0]);
+    }
+  } else {
+    // Return all to media-grid
+    if (main.firstElementChild) $('media-grid').append(main.firstElementChild);
+    main.replaceChildren();
+  }
+}
+
+$('layout-toggle')?.addEventListener('click', () => {
+  const current = localStorage.getItem('orbita-layout') || 'stage';
+  localStorage.setItem('orbita-layout', current === 'stage' ? 'gallery' : 'stage');
+  updateMediaLayout();
+});
+
 async function boot() {
   try {
     config = await (await fetch('/api/config')).json();
@@ -316,7 +452,7 @@ async function boot() {
     // Não execute chamadas ao Supabase dentro do callback de Auth.
     db.auth.onAuthStateChange((_event, next) => { setTimeout(() => showSession(next), 0); });
     const {data, error} = await db.auth.getSession(); if (error) throw error;
-    await showSession(data.session);
+    await showSession(data.session);startGooglePerformance();
   } catch (error) { $('auth-status').textContent = 'Falha ao iniciar: ' + errorText(error); $('auth-submit').disabled = true; }
 }
 // Social features share the authenticated Supabase client and its row policies.
@@ -324,10 +460,51 @@ let profile, people = [], friendships = [], conversations = [], socialSubscripti
 let publicVoicePresence=[],lastPresenceSignature='',online = new Set(), home = false, pinsOnly = false, musicSubscription, musicState, musicUrl, musicVersion = 0, musicRevision = 0;
 const audioPlayer = new Audio();
 let noise = localStorage.getItem('orbita-noise') !== 'false', deafened = false;
+
+// Wire screen quality selector
+if ($('screen-quality')) {
+  $('screen-quality').value = currentScreenPreset;
+  $('screen-quality').onchange = () => {
+    currentScreenPreset = $('screen-quality').value;
+    localStorage.setItem('orbita-screen-preset', currentScreenPreset);
+    toast('Qualidade da tela: ' + currentScreenPreset);
+  };
+}
+// Noise toggle
+if ($('noise-toggle')) {
+  const updateNoiseBtn = () => {
+    $('noise-toggle').textContent = noise ? '🔇 Noise ON' : '🔇 Noise OFF';
+    $('noise-toggle').classList.toggle('primary', noise);
+  };
+  updateNoiseBtn();
+  $('noise-toggle').onclick = async () => {
+    noise = !noise;
+    localStorage.setItem('orbita-noise', String(noise));
+    updateNoiseBtn();
+    if (room) {
+      try {
+        for (const pub of room.localParticipant.audioTrackPublications.values()) {
+          if (pub.track?.source === 'microphone') await pub.track.restartTrack(audioCapture());
+        }
+        toast(noise ? 'Noise suppression ativado' : 'Noise suppression desativado');
+      } catch (e) { toast(errorText(e)); }
+    }
+  };
+}
+// Show call-extras when in call
+const origUpdateCallUI = updateCallUI;
+updateCallUI = function() {
+  origUpdateCallUI();
+  const here = !!room && callChannel?.id === selected?.id && selected?.kind === 'voice';
+  if ($('call-extras')) $('call-extras').hidden = !here;
+  if ($('shortcuts-hint')) $('shortcuts-hint').hidden = !here;
+};
+
+
 const audioCapture = () => ({noiseSuppression:noise, echoCancellation:true, autoGainControl:true, channelCount:1});
 const scopeKey = target => target?.private ? 'conversation_id' : 'channel_id';
 const messageTable = () => selected?.private ? 'direct_messages' : 'messages';
-const messageFields = '*,profiles!author_id(display_name,username,avatar_color),attachments(id,owner_id,storage_path,file_id,name,mime_type,size),reactions(id,emoji,user_id),poll_votes(id,user_id,option_index)';
+const messageFields = '*,profiles!author_id(display_name,username,avatar_color),attachments(id,name,mime_type,size),reactions(id,emoji,user_id),poll_votes(id,user_id,option_index)';
 const otherUser = c => c.user_a === session.user.id ? c.user_b : c.user_a;
 const person = id => people.find(p => p.id === id) || {id,display_name:'Participante',username:'',avatar_color:'#8b80ff'};
 function button(label, action, css = 'soft-button') { const b = el('button', css, label); b.type='button'; b.onclick=()=>Promise.resolve(action()).catch(e=>toast(errorText(e))); return b; }
@@ -483,18 +660,7 @@ async function refreshMessages(){
   try{const data=await checked(db.from(table).select(messageFields).eq(scopeKey(target),target.id).order('created_at',{ascending:false}).limit(60));if(version!==generation)return;for(const m of data)messages.set(m.id,m);renderMessages();}catch(e){toast(errorText(e));}
 }
 async function messageAction(message,action){
-  if(action==='delete'){showDialog('Excluir mensagem',container=>{container.append(el('p','','Deseja excluir esta mensagem?'),button('Excluir',async()=>{
-    await checked(db.from(messageTable()).delete().eq('id',message.id));
-    if(message.attachments?.owner_id===session.user.id){
-      const path=message.attachments.storage_path||message.attachments.file_id;
-      if(path){
-        const music=await checked(db.from('music_state').select('id').eq('attachment_id',message.attachments.id).limit(1));
-        if(music.length){toast('Mensagem removida; o anexo continua disponível no player de música.');}
-        else{const {error}=await db.storage.from('orbita-files').remove([path]);if(error){toast('Mensagem removida; o anexo ficou guardado.');}else await checked(db.from('attachments').delete().eq('id',message.attachments.id).eq('owner_id',session.user.id));}
-      }
-    }
-    messages.delete(message.id);$('app-dialog').close();renderMessages();
-  },'danger'));});return;}
+  if(action==='delete'){showDialog('Excluir mensagem',container=>{container.append(el('p','','Deseja excluir esta mensagem?'),button('Excluir',async()=>{await checked(db.from(messageTable()).delete().eq('id',message.id));messages.delete(message.id);$('app-dialog').close();renderMessages();},'danger'));});return;}
   if(action==='pin'){await checked(db.from(messageTable()).update({pinned:!message.pinned}).eq('id',message.id));message.pinned=!message.pinned;renderMessages();return;}
   showDialog('Editar mensagem',container=>{const form=el('form'),input=inputField(form,'Mensagem',message.content,4000),save=el('button','primary','Salvar');save.type='submit';form.append(save);container.append(form);form.onsubmit=async e=>{e.preventDefault();try{await checked(db.from(messageTable()).update({content:input.value.trim()}).eq('id',message.id));message.content=input.value.trim();$('app-dialog').close();renderMessages();}catch(error){toast(errorText(error));}};});
 }
@@ -505,45 +671,32 @@ async function react(message,emoji){
   await refreshMessages();
 }
 async function downloadAttachment(a,play=false){
-  const path=a.storage_path||a.file_id;
-  if(!path)throw Error('Este arquivo não está disponível no armazenamento do Supabase.');
-  const {data:blob,error}=await db.storage.from('orbita-files').download(path);
-  if(error)throw error;
-  const url=URL.createObjectURL(new Blob([blob],{type:a.mime_type||'application/octet-stream'}));
+  const response=await apiFetch(`/api/attachments/${a.id}/download`),blob=await response.blob(),url=URL.createObjectURL(new Blob([blob],{type:play?a.mime_type:'application/octet-stream'}));
   if(play)return url;
   const link=el('a');link.href=url;link.download=a.name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 async function uploadFile(file,target){
-  if(!config.storageConfigured)throw Error('O armazenamento de arquivos ainda não está pronto.');
-  if(file.size>config.uploadLimit)throw Error('O limite é 25 MB por arquivo.');
-  if(!target||!['text','voice'].includes(target.kind))throw Error('Escolha um canal ou conversa antes de enviar.');
-  const kind=target.private?'conversations':'channels';
-  const path=`${kind}/${target.id}/${session.user.id}/${crypto.randomUUID()}`;
-  const mime=file.type||'application/octet-stream';
-  const {error:uploadError}=await db.storage.from('orbita-files').upload(path,file,{cacheControl:'3600',contentType:mime,upsert:false});
-  if(uploadError)throw uploadError;
-  try{
-    const row={owner_id:session.user.id,channel_id:target.private?null:target.id,conversation_id:target.private?target.id:null,
-      file_id:path,storage_path:path,storage_proof:'supabase-private-v1',name:file.name.slice(0,180),mime_type:mime.slice(0,120),size:file.size};
-    return await checked(db.from('attachments').insert(row).select('id,owner_id,channel_id,conversation_id,file_id,storage_path,name,mime_type,size').single());
-  }catch(error){await db.storage.from('orbita-files').remove([path]);throw error;}
+  if(!config.driveConfigured)throw Error('O proprietário ainda precisa conectar o Google Drive.');
+  if(file.size>config.uploadLimit)throw Error('Escolha um arquivo de até 25 MB.');
+  return (await apiFetch(`/api/attachments?target_kind=${target.private?'direct':'channel'}&target_id=${target.id}`,{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream','X-File-Name':encodeURIComponent(file.name)},body:file})).json();
 }
-$('attach-file').onclick=()=>{if(!config.storageConfigured)return toast('O Storage do Supabase ainda não está configurado.');$('file-input').click();};
+$('attach-file').onclick=()=>{if(!config.driveConfigured)return toast('O Drive está preparado no site, mas falta a autorização Google do proprietário.');$('file-input').click();};
 $('file-input').onchange=async()=>{
   const file=$('file-input').files[0],target=selected,version=generation;if(!file)return;
-  $('attach-file').disabled=true;try{toast('Enviando para o armazenamento privado…');const attachment=await uploadFile(file,target);
-    try{await checked(db.from(target.private?'direct_messages':'messages').insert({[scopeKey(target)]:target.id,author_id:session.user.id,content:'📎 '+attachment.name,attachment_id:attachment.id}));}
-    catch(error){await db.from('attachments').delete().eq('id',attachment.id).eq('owner_id',session.user.id);await db.storage.from('orbita-files').remove([attachment.storage_path]);throw error;}
+  $('attach-file').disabled=true;try{toast('Enviando arquivo para o Drive…');const attachment=await uploadFile(file,target);
+    await checked(db.from(target.private?'direct_messages':'messages').insert({[scopeKey(target)]:target.id,author_id:session.user.id,content:'📎 '+attachment.name,attachment_id:attachment.id}));
     if(version===generation)await refreshMessages();toast('Arquivo enviado.');
   }catch(e){toast(errorText(e));}finally{$('attach-file').disabled=false;$('file-input').value='';}
 };
+$('drive-info').onclick=()=>showDialog('Arquivos no Google Drive',container=>{
+  container.append(el('p','',config.driveConfigured?'O Drive está conectado. Você pode compartilhar arquivos de até 25 MB.':'A integração está preparada. O proprietário precisa autorizar uma pasta do Google Drive para ativar os envios.'),el('p','muted','Os downloads passam pelo site e respeitam as permissões da conversa. Nenhum arquivo privado é compartilhado publicamente.'));
+});
 function renderMusicStatus(text){$('music-status').textContent=text;}
 async function watchMusic(target){
-  if(!config.storageConfigured){renderMusicStatus("Upload de música indisponível");return;}
   const version=++musicVersion;musicState=null;audioPlayer.pause();audioPlayer.removeAttribute('src');if(musicUrl){URL.revokeObjectURL(musicUrl);musicUrl=null;}
   if(musicSubscription)await db.removeChannel(musicSubscription);
   renderMusicStatus('Escolha um áudio para ouvir juntos');$('music-play').textContent='▶';
-  const reload=async()=>{try{const data=await checked(db.from('music_state').select('*,attachments(id,owner_id,storage_path,file_id,name,mime_type,size)').eq(scopeKey(target),target.id).maybeSingle());if(version===musicVersion)await applyMusic(data,version);}catch(e){toast(errorText(e));}};
+  const reload=async()=>{try{const data=await checked(db.from('music_state').select('*,attachments(id,name,mime_type,size)').eq(scopeKey(target),target.id).maybeSingle());if(version===musicVersion)await applyMusic(data,version);}catch(e){toast(errorText(e));}};
   musicSubscription=db.channel('music-'+target.id+'-'+version).on('postgres_changes',{event:'*',schema:'public',table:'music_state',filter:`${scopeKey(target)}=eq.${target.id}`},reload).subscribe(status=>{if(status==='SUBSCRIBED')reload();});
 }
 async function applyMusic(state,version){
@@ -562,7 +715,7 @@ async function setMusic(values){
 $('music-play').onclick=()=>setMusic({playing:!musicState?.playing,position:audioPlayer.currentTime}).catch(e=>toast(errorText(e)));
 $('music-listen').onclick=()=>audioPlayer.play().catch(()=>toast('Escolha uma música primeiro.'));
 $('music-volume').oninput=e=>{audioPlayer.volume=Number(e.target.value);};
-$('music-upload').onclick=()=>{if(!config.storageConfigured)return toast('O Storage do Supabase ainda não está configurado.');$('music-input').click();};
+$('music-upload').onclick=()=>{if(!config.driveConfigured)return toast('Conecte o Drive para compartilhar arquivos de música.');$('music-input').click();};
 $('music-input').onchange=async()=>{
   const file=$('music-input').files[0],target=selected,version=musicVersion;if(!file||!target)return;
   $('music-upload').disabled=true;
@@ -599,7 +752,7 @@ initSocial=async()=>{
     .on('postgres_changes',{event:'*',schema:'public',table:'site_roles'},async()=>{siteRoles=await checked(db.from('site_roles').select('*'));renderMembers();updateFounders();})
     .on('postgres_changes',{event:'*',schema:'public',table:'poll_votes'},()=>{if(!home&&selected?.kind==='text')refreshMessages();}).subscribe();
   if(new URLSearchParams(location.hash.slice(1)).has('convite'))toast('Entre na conta de Kalil e abra Configurações → Aceitar convite de criador.');
-  $('banner-title').textContent='Sua comunidade';
+  $('banner-title').textContent=config.driveConfigured?'Drive conectado':'Google Drive';
 };
 function navigation(direct=false){
   $('sidebar-scroll-content').classList.toggle('hidden',direct);$('dm-scroll-content').classList.toggle('hidden',!direct);
@@ -696,7 +849,7 @@ $('settings').onclick=()=>{
   const themeLabel=el('label','field','Tema'),theme=el('select');for(const [key,label]of[['orbita','Violeta Órbita'],['blurple','Blurple'],['emerald','Emerald'],['nitro','Pink']]){const option=el('option','',label);option.value=key;theme.append(option);}theme.value=localStorage.getItem('orbita-theme')||'orbita';themeLabel.append(theme);appearance.append(themeLabel);
   const densityLabel=el('label','field','Densidade'),density=el('select');for(const value of ['cozy','compact']){const option=el('option','',value==='cozy'?'Confortável':'Compacta');option.value=value;density.append(option);}density.value=localStorage.getItem('orbita-density')||'cozy';densityLabel.append(density);appearance.append(densityLabel);
   for(const [input,key]of[[theme,'theme'],[density,'density']])input.onchange=()=>{localStorage.setItem('orbita-'+key,input.value);document.body.dataset[key]=input.value;};
-  container.append(appearance,button('Aceitar convite de criador',()=>showCreatorInvite()),button('Sobre esta versão',()=>openCloud()));
+  container.append(appearance,button('Aceitar convite de criador',()=>showCreatorInvite()),button('Google Cloud e Google Drive',()=>openCloud()));
   if(isAdmin())container.append(button('Administrar o site',()=>openManagement(),'primary'));
 };
 function showCreatorInvite(){showDialog('Convite de criador — Kalil',container=>{
@@ -709,22 +862,34 @@ function openManagement(){showDialog(isAdmin()?'Administração do site':'Config
   if(!managesCommunity()){container.append(el('p','','Você não tem permissão para alterar esta comunidade.'));return;}
   const form=el('form'),name=inputField(form,'Nome',c?.name,60),description=inputField(form,'Descrição',c?.description,240),save=el('button','primary','Salvar comunidade');save.type='submit';form.append(save);container.append(form);
   form.onsubmit=async e=>{e.preventDefault();try{await checked(db.from('communities').update({name:name.value.trim(),description:description.value.trim()}).eq('id',activeCommunity));c.name=name.value.trim();c.description=description.value.trim();renderCommunityRail();toast('Comunidade atualizada.');}catch(error){toast(errorText(error));}};
-  const actions=el('div','admin-menu');actions.append(button('Criar canal',()=>{$('app-dialog').close();$('create-channel').click();}),button('Sobre esta versão',()=>openCloud()));container.append(actions);
+  const actions=el('div','admin-menu');actions.append(button('Criar canal',()=>{$('app-dialog').close();$('create-channel').click();}),button('Google Cloud / Drive',()=>openCloud()));container.append(actions);
   for(const channel of channels.filter(ch=>ch.community_id===activeCommunity)){const row=el('div','community-card');row.append(el('strong','',channel.name),button('Editar',()=>editChannel(channel)));container.append(row);}
 });}
 function editChannel(channel){showDialog('Editar canal',container=>{const form=el('form'),name=inputField(form,'Nome',channel.name,40),description=inputField(form,'Descrição',channel.description,240),save=el('button','primary','Salvar');save.type='submit';form.append(save);container.append(form);form.onsubmit=async e=>{e.preventDefault();try{await checked(db.from('channels').update({name:name.value.trim(),description:description.value.trim()}).eq('id',channel.id));channel.name=name.value.trim();channel.description=description.value.trim();renderChannels();if(selected?.id===channel.id)await selectChannel(channel);$('app-dialog').close();}catch(error){toast(errorText(error));}};
 container.append(button('Excluir canal e seu histórico',()=>showDialog('Excluir canal',box=>{box.append(el('p','','A exclusão remove permanentemente o histórico deste canal. Confirme somente se desejar apagar esses dados.'),button('Excluir permanentemente',async()=>{await checked(db.from('channels').delete().eq('id',channel.id));channels=channels.filter(ch=>ch.id!==channel.id);$('app-dialog').close();renderChannels();if(selected?.id===channel.id)showFriends();},'danger'));}),'danger'));});}
-function openCloud(){showDialog('Sobre esta versão',container=>{container.append(el('p','','Contas, mensagens e arquivos privados no Supabase. Chamadas de voz, vídeo e compartilhamento de tela com LiveKit. O áudio da tela depende do navegador e da opção marcada ao compartilhar.'));});}
+function openCloud(){showDialog('Google Cloud e arquivos',container=>{
+  container.append(el('p','',config.driveConfigured?'Google Drive conectado. Arquivos de até 25 MB estão disponíveis.':'A conexão Google aguarda as credenciais OAuth do proprietário. Nenhum serviço pago foi ativado.'),el('p','muted','O Supabase mantém contas, mensagens e permissões. O Drive armazena arquivos e cópias JSON do banco da comunidade, sem incluir conversas privadas de outras pessoas.'));
+  container.append(el('p','muted','Monitoramento Google: '+(config.firebaseConfig?'configurado; ative nas preferências de diagnóstico.':'aguardando configuração do projeto Firebase.')));
+  if(isAdmin())container.append(button('Salvar cópia do banco no Drive',async()=>{const result=await(await apiFetch('/api/admin/drive-backup',{method:'POST'})).json();toast(result.message);},'primary'));
+  const label=el('label','check-field'),check=el('input');check.type='checkbox';check.checked=localStorage.getItem('orbita-diagnostics')==='true';label.append(check,document.createTextNode('Permitir diagnóstico de desempenho pelo Firebase'));container.append(label);check.onchange=()=>{localStorage.setItem('orbita-diagnostics',String(check.checked));if(check.checked)startGooglePerformance();toast('Preferência salva. Recarregue a página para encerrar uma sessão de diagnóstico ativa.');};
+});}
 $('dd-boost-btn').onclick=openCloud;$('banner-action-btn').onclick=openCloud;$('drive-info').onclick=openCloud;
 $('up-mic-btn').onclick=()=>$('mic').click();$('up-deafen-btn').onclick=()=>$('deafen').click();$('vb-mic').onclick=()=>$('mic').click();$('vb-video').onclick=()=>$('camera').click();$('dock-name').onclick=()=>{if(callChannel)selectChannel(callChannel);};
 $('back-to-call').onclick=()=>{if(selected?.private){const c=conversations.find(c=>c.id===selected.id);if(c)openConversation(c);}else{const c=channels.find(c=>c.community_id===activeCommunity&&c.kind==='text');if(c)selectChannel(c);}};
 $('connection-info').onclick=()=>showDialog('Conexão da chamada',container=>{container.append(el('p','',room?'Estado: '+room.state:'Você ainda não está em uma chamada.'));if(room){container.append(el('p','','Qualidade local: '+room.localParticipant.connectionQuality));for(const p of room.remoteParticipants.values())container.append(el('p','',(p.name||'Participante')+' · '+p.connectionQuality));}container.append(el('p','muted','Vídeo e áudio se adaptam à rede. O áudio da tela depende do navegador e da opção escolhida na janela de compartilhamento.'));});
 let lastReaction=0;
 $('vc-react-call').onclick=async()=>{if(!room||Date.now()-lastReaction<2000)return;lastReaction=Date.now();try{await room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({type:'reaction',emoji:'🎉'})),{reliable:true,topic:'orbita-reaction'});toast('Você · 🎉');}catch(e){toast(errorText(e));}};
-function receiveCallData(payload,participant,_kind,topic){if(topic!=='orbita-reaction'||payload.length>200)return;try{const data=JSON.parse(new TextDecoder().decode(payload));if(data.type==='reaction'&&['🎉','❤️','👍','😂'].includes(data.emoji))toast((participant?.name||'Participante')+' · '+data.emoji);}catch{}}
+function receiveCallData(payload,participant,_kind,topic){if(topic!=='orbita-reaction'||payload.length>200)return;try{const data=JSON.parse(new TextDecoder().decode(payload));if(data.type==='reaction'&&['🎉','❤️','👍','😂','🔥','👀','🚀'].includes(data.emoji)){
+  toast((participant?.name||'Participante')+' · '+data.emoji);
+  showReactionOverlay(participant.identity || participant.sid, data.emoji);
+}}catch{}}
 const screenLabel=el('label','screen-option'),screenCheck=el('input');screenCheck.type='checkbox';screenCheck.id='share-screen-audio';screenCheck.checked=localStorage.getItem('orbita-screen-audio')!=='false';screenLabel.append(screenCheck,document.createTextNode('Incluir áudio da tela (autorize também na janela do navegador)'));$('active-controls').before(screenLabel);
 function updateScreenAudio(){SCREEN_CAPTURE.audio=screenCheck.checked;SCREEN_CAPTURE.systemAudio=screenCheck.checked?'include':'exclude';SCREEN_CAPTURE.surfaceSwitching='include';localStorage.setItem('orbita-screen-audio',String(screenCheck.checked));}
 screenCheck.onchange=updateScreenAudio;updateScreenAudio();
+async function startGooglePerformance(){
+  if(!config?.firebaseConfig||localStorage.getItem('orbita-diagnostics')!=='true')return;
+  try{const{initializeApp,getApps}=await import('https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js');const{getPerformance,isSupported}=await import('https://www.gstatic.com/firebasejs/12.4.0/firebase-performance.js');if(await isSupported())getPerformance(getApps()[0]||initializeApp(config.firebaseConfig));}catch{toast('O diagnóstico Google está indisponível neste navegador.');}
+}
 $('btn-notif-toggle').onclick=async()=>{if(!('Notification'in window))return toast('Este navegador não oferece notificações.');const permission=await Notification.requestPermission();toast(permission==='granted'?'Notificações ativadas neste navegador.':'Notificações não autorizadas.');};
 document.body.dataset.theme=localStorage.getItem('orbita-theme')||'orbita';document.body.dataset.density=localStorage.getItem('orbita-density')||'cozy';
 window.addEventListener('pagehide',()=>{if(extraSubscription)db?.removeChannel(extraSubscription);});

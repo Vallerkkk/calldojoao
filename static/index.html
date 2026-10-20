@@ -4,8 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órbita — Comunidade, Chat & Voz em Tempo Real</title>
-<link rel="stylesheet" href="/static/style.css?v=upgrade-20261020">
-<link rel="stylesheet" href="/static/discord.css?v=discord-1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 
@@ -73,7 +75,7 @@
     <!-- Server Dropdown Menu -->
     <div class="server-dropdown hidden" id="server-dropdown">
       <button class="boost-item" id="dd-boost-btn">
-        <span>Sobre esta versão Servidor</span>
+        <span>Google Drive Servidor</span>
         <span>✦</span>
       </button>
       <div class="dd-sep"></div>
@@ -95,9 +97,9 @@
     <div class="server-banner" id="server-banner-box">
       <div class="sb-info">
         <strong id="banner-title">Arquivos e conexões</strong>
-        <span>Voz, vídeo e sua comunidade</span>
+        <span>Voz, vídeo e arquivos no mesmo lugar</span>
       </div>
-      <button class="sb-btn" id="banner-action-btn">Sobre esta versão</button>
+      <button class="sb-btn" id="banner-action-btn">Google Drive</button>
     </div>
 
     <div class="channels-scroll" id="sidebar-scroll-content"><div class="category"><div class="category-header"><span>CANAIS DE TEXTO</span><button id="create-channel" title="Criar canal">＋</button></div><div id="text-channels" class="channel-list"></div></div><div class="category"><div class="category-header"><span>SALAS DE VOZ</span></div><div id="voice-channels" class="channel-list"></div></div></div><div class="channels-scroll hidden" id="dm-scroll-content">
@@ -236,10 +238,6 @@
           <span class="ch-desc" id="channel-description">Conversa livre do servidor</span>
         </div>
         <div class="chat-actions">
-          <button id="btn-free-setup" class="free-setup-pill" title="Estado da conexão">
-            <span class="conn-dot" id="conn-dot"></span>
-            <span id="conn-label">Supabase conectado</span>
-          </button>
           <button id="btn-notif-toggle" title="Notificações">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
@@ -262,7 +260,7 @@
             </svg>
           </button>
           <div class="header-search-wrap">
-            <input type="text" class="header-search-input" id="search-messages" placeholder="Buscar no canal...">
+            <input type="text" class="header-search-input" id="search-messages" aria-label="Buscar mensagens" placeholder="Buscar no canal...">
             <button id="btn-search-toggle" title="Buscar" style="position:absolute;right:0;width:28px;height:28px;">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <circle cx="11" cy="11" r="8"/>
@@ -298,16 +296,9 @@
       </div>
 
       <div class="message-form-wrap">
-        <!-- Autocomplete Popover -->
-        <div class="composer-popover autocomplete-popover hidden" id="autocomplete-popover"></div>
-
-        <!-- Hidden file input for real image uploads -->
-        <input type="file" id="real-file-input" accept="image/*" class="hidden">
-
         <!-- Attach Popover -->
         <div class="composer-popover attach-popover hidden" id="attach-popover">
-          <button type="button" data-attach="file">📷 Enviar Imagem do PC</button>
-          <button type="button" id="attach-file">📎 Enviar arquivo do seu dispositivo</button>
+          <button type="button" id="attach-file">📎 Enviar arquivo pelo Drive</button>
           <button type="button" id="insert-code">⌨ Inserir trecho de código</button>
           <button type="button" id="create-poll">📊 Criar Enquete Rápida</button>
         </div>
@@ -325,7 +316,7 @@
               <line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
           </button>
-          <input type="text" maxlength="4000" id="message-input" placeholder="Conversar em #geral (use `código` ou @nome)" autocomplete="off">
+          <input type="text" maxlength="4000" id="message-input" aria-label="Mensagem" placeholder="Conversar em #geral (use `código` ou @nome)" autocomplete="off">
           <button type="button" class="icon-btn" id="btn-emoji" title="Emoji">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <circle cx="12" cy="12" r="10"/>
@@ -376,7 +367,7 @@
             <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
           </svg>
           <h2 id="voice-title">Sala Principal</h2>
-          <span class="ch-desc" id="call-status">4 participantes • Simulcast 1080p</span>
+          <span class="ch-desc" id="call-status">Entre na sala para conversar</span>
         </div>
         <div class="chat-actions">
           <button id="back-to-call" title="Voltar ao chat de texto mantendo a call">
@@ -387,14 +378,28 @@
         </div>
       </header>
 
-      <div class="voice-stage" id="voice-stage"><div id="participants" class="participants"></div><div id="media-grid" class="media-grid"></div><div id="empty-call" class="empty-call"><h2>Entre na conversa.</h2><p>Voz, câmera e compartilhamento de tela com áudio.</p></div></div><div class="join-wrap"><button id="join-call" class="primary">Entrar na sala</button></div>
-
-      <div class="soundboard-bar" id="soundboard-bar">
-        <button type="button" class="sb-fx-btn" data-sfx="fanfare">🎺 Fanfarra</button>
-        <button type="button" class="sb-fx-btn" data-sfx="coin">🪙 Moeda 8-Bit</button>
-        <button type="button" class="sb-fx-btn" data-sfx="laser">⚡ Laser</button>
-        <button type="button" class="sb-fx-btn" data-sfx="powerup">🚀 Power-Up</button>
+      <div class="voice-stage" id="voice-stage">
+        <div id="main-stage" class="main-stage"></div>
+        <div id="filmstrip" class="filmstrip">
+          <div id="participants" class="participants"></div>
+          <div id="media-grid" class="media-grid"></div>
+        </div>
+        <div id="empty-call" class="empty-call"><h2>Entre na conversa.</h2><p>Voz, câmera e compartilhamento de tela com áudio.</p></div>
       </div>
+      <button id="layout-toggle" class="layout-toggle" hidden title="Alternar layout da chamada">Stage / Gallery</button>
+      <div class="call-extras" id="call-extras" hidden>
+        <label class="quality-select">Qualidade da tela
+          <select id="screen-quality">
+            <option value="720p15">720p 15fps (leve)</option>
+            <option value="1080p15">1080p 15fps</option>
+            <option value="1080p30" selected>1080p 30fps</option>
+            <option value="1440p15">1440p 15fps (alta)</option>
+          </select>
+        </label>
+        <button id="noise-toggle" class="tiny-button" title="Noise Suppression">🔇 Noise</button>
+      </div><div class="join-wrap"><button id="join-call" class="primary">Entrar na sala</button></div>
+
+      <div class="shortcuts-hint" id="shortcuts-hint" hidden>Atalhos: M mute · V câmera · Shift+S tela · D surdo</div>
       <div class="voice-controls" id="active-controls" hidden><button id="deafen" class="vc-btn" aria-pressed="false" title="Silenciar áudio">🎧</button>
         <button class="vc-btn" id="mic" title="Microfone">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -450,20 +455,14 @@
 
 <!-- TOAST CONTAINER -->
 <div class="toast-container" id="toast-container"></div>
-<div class="dropzone-overlay hidden" id="dropzone-overlay">
-  <div style="font-size:48px">📥</div>
-  <h3>Solte a imagem para enviar instantaneamente</h3>
-  <p>Upload direto no canal ativo (100% gratuito)</p>
-</div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-<div id="toast" role="status" hidden></div>
+<p id="creators-credit" class="creators-credit"></p><div id="toast" role="status" hidden></div>
 <input type="file" id="file-input" hidden>
 <button id="private-call" class="private-call primary" hidden>Ligar em particular ↗</button>
-<button id="drive-info" class="drive-shortcut" title="Sobre esta versão">▱</button>
+<button id="drive-info" class="drive-shortcut" title="Google Drive">▱</button>
 <span id="friends-badge" hidden></span>
 <button id="back-to-call-dock" hidden>Voltar à chamada</button>
 <div id="incoming-call" class="incoming-call" hidden><strong id="incoming-name"></strong><button id="answer-call" class="primary">Atender</button><button id="decline-call" class="danger">Recusar</button></div>
 <dialog id="app-dialog"><div class="dialog-header"><h2 id="dialog-title"></h2><button id="dialog-close" aria-label="Fechar">×</button></div><div id="dialog-content"></div></dialog>
-<script type="module" src="/static/app.js?v=upgrade-20261020"></script><script src="/static/discord.js?v=discord-1" defer></script><div id="creators-credit" class="creators-credit"></div></body></html>
+<script type="module" src="/static/app.js"></script></body></html>
