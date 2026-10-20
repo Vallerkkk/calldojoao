@@ -3,10 +3,36 @@ let db, config, session, channels = [], selected, signup = false;
 let subscription, generation = 0, messages = new Map(), oldest, hasMore = false, loading = false;
 let room, callChannel, joining = false, shuttingDown = false;
 // Metas de qualidade: o navegador e o LiveKit podem reduzir conforme o dispositivo e a rede.
-const CAMERA_CAPTURE = {resolution: {width:1920, height:1080, frameRate:30}};
-const SCREEN_CAPTURE = {resolution: {width:1920, height:1080, frameRate:30}, contentHint:'detail', audio:true, systemAudio:'include', surfaceSwitching:'include'};
-const CAMERA_PUBLISH = {videoEncoding: {maxBitrate:4_500_000, maxFramerate:30}, degradationPreference:'balanced'};
-const SCREEN_PUBLISH = {screenShareEncoding: {maxBitrate:6_000_000, maxFramerate:30}, degradationPreference:'maintain-resolution'};
+const canShareScreen = typeof navigator.mediaDevices?.getDisplayMedia === 'function';
+function mediaMode(){
+  const connection=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+  const slow=/^(slow-2g|2g|3g)$/.test(connection?.effectiveType||'');
+  const lowPower=(navigator.deviceMemory||4)<=2;
+  if(connection?.saveData||slow||lowPower)return 'economia';
+  if(matchMedia('(max-width:780px), (pointer:coarse)').matches)return 'equilibrada';
+  return 'alta';
+}
+function mediaSettings(){
+  const mode=mediaMode(),screenAudio=localStorage.getItem('orbita-screen-audio')!=='false';
+  const profile=mode==='economia'
+    ? {camera:[640,360,20,650_000],screen:[1280,720,15,1_400_000]}
+    : mode==='equilibrada'
+      ? {camera:[1280,720,24,1_600_000],screen:[1600,900,24,2_500_000]}
+      : {camera:[1280,720,30,2_500_000],screen:[1920,1080,30,4_000_000]};
+  const [cw,ch,cf,cb]=profile.camera,[sw,sh,sf,sb]=profile.screen;
+  return {
+    cameraCapture:{resolution:{width:cw,height:ch,frameRate:cf}},
+    cameraPublish:{videoEncoding:{maxBitrate:cb,maxFramerate:cf},degradationPreference:'balanced'},
+    screenCapture:{resolution:{width:sw,height:sh,frameRate:sf},contentHint:'detail',audio:screenAudio,systemAudio:screenAudio?'include':'exclude',surfaceSwitching:'include'},
+    screenPublish:{screenShareEncoding:{maxBitrate:sb,maxFramerate:sf},degradationPreference:'maintain-resolution'},
+    mode,
+  };
+}
+function closeMobileMenu(){
+  document.body.classList.remove('mobile-menu-open');
+  $('mobile-menu-btn')?.setAttribute('aria-expanded','false');
+  document.querySelectorAll('.mobile-nav-btn').forEach(menu=>menu.setAttribute('aria-expanded','false'));
+}
 let toastTimer;
 function toast(message) {
   $('toast').textContent = message; $('toast').hidden = false;
@@ -55,9 +81,8 @@ async function showSession(next) {
   if (!next) {
     generation++; if (subscription) { db.removeChannel(subscription); subscription = null; }
     await leaveCall();
-    for(const channel of [socialSubscription,presenceChannel,musicSubscription,extraSubscription])if(channel)db.removeChannel(channel);
-    audioPlayer.pause();musicVersion++;people=[];friendships=[];conversations=[];
-    if(musicUrl)URL.revokeObjectURL(musicUrl);musicUrl=null;audioPlayer.removeAttribute('src');return;
+    for(const channel of [socialSubscription,presenceChannel,extraSubscription])if(channel)db.removeChannel(channel);
+    people=[];friendships=[];conversations=[];return;
   }
   const name = next.user.user_metadata.display_name || 'Participante';
   $('user-name').textContent = name; $('user-avatar').textContent = initials(name);
@@ -90,7 +115,7 @@ async function selectChannel(channel) {
   $('friends-view').hidden=true;$('search-messages').value='';
   $('private-call').hidden=!channel.private||channel.kind!=='text';
   $('pins-toggle').setAttribute('aria-pressed','false');
-  selected = channel;watchMusic(channel).catch(e=>toast(errorText(e))); const version = ++generation;
+  selected = channel;closeMobileMenu(); const version = ++generation;
   if (subscription) { db.removeChannel(subscription); subscription = null; }
   renderChannels(); renderSocial(); $('channel-title').textContent = channel.name;
   $('text-view').hidden = channel.kind !== 'text'; $('voice-view').hidden = channel.kind !== 'voice';
@@ -209,7 +234,7 @@ function removeTrack(track) {
 function qualityText(quality){return ({excellent:'Ótima conexão',good:'Boa conexão',poor:'Conexão instável',unknown:'Conectando'})[String(quality||'unknown').toLowerCase()]||'Conectando';}
 function updateCallUI() {
   const here = !!room && callChannel?.id === selected?.id && selected?.kind === 'voice';
-  $('call-dock').hidden=!room;$('dock-name').textContent=callChannel?.name||'';
+  $('call-dock').hidden=!room;$('dock-name').textContent=callChannel?.name||'';$('call-dock').querySelector('.vb-ping').textContent=here?qualityText(room.localParticipant.connectionQuality):'Conectado';
   $('join-call').hidden = here; $('join-call').disabled = joining || !config?.callsConfigured;
   $('join-call').textContent = joining ? 'Conectando…' : (room ? 'Trocar para esta sala ↗' : 'Entrar na sala ↗');
   $('active-controls').hidden = !here; $('empty-call').hidden = here;
@@ -252,18 +277,23 @@ $('join-call').onclick = async () => {
     const {Room, RoomEvent, VideoPresets, ScreenSharePresets} = await import('https://cdn.jsdelivr.net/npm/livekit-client@2.15.6/+esm');
     if (!session || shuttingDown) return;
     await leaveCall();
+    const media=mediaSettings();
     const connected = new Room({
       adaptiveStream: {pixelDensity:'screen'},
       dynacast:true,
       audioCaptureDefaults:audioCapture(),
-      videoCaptureDefaults:CAMERA_CAPTURE,
+      videoCaptureDefaults:media.cameraCapture,
       publishDefaults: {
         simulcast:true,
         videoCodec:'vp8',
-        videoEncoding:CAMERA_PUBLISH.videoEncoding,
-        screenShareEncoding:SCREEN_PUBLISH.screenShareEncoding,
-        videoSimulcastLayers:[VideoPresets.h360, VideoPresets.h720],
-        screenShareSimulcastLayers:[ScreenSharePresets.h720fps15],
+        videoEncoding:media.cameraPublish.videoEncoding,
+        screenShareEncoding:media.screenPublish.screenShareEncoding,
+        videoSimulcastLayers:media.mode==='economia'?[VideoPresets.h180,VideoPresets.h360]:[VideoPresets.h360,VideoPresets.h720],
+        screenShareSimulcastLayers:media.mode==='economia'
+          ?[ScreenSharePresets.h360fps15,ScreenSharePresets.h720fps15]
+          :media.mode==='equilibrada'
+            ?[ScreenSharePresets.h720fps15,ScreenSharePresets.h1080fps15]
+            :[ScreenSharePresets.h720fps30,ScreenSharePresets.h1080fps30],
       },
     }); room = connected; callChannel = target;
     connected.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {onTrack(track, participant);updateCallUI();}).on(RoomEvent.TrackUnsubscribed, track => {removeTrack(track);updateCallUI();})
@@ -281,30 +311,32 @@ $('join-call').onclick = async () => {
     connected.on(RoomEvent.Disconnected, () => { if (room === connected) { leaveCall(); toast('Você saiu da chamada.'); } });
     await connected.connect(result.url, result.token);
     if (!session || room !== connected) { await connected.disconnect(); return; }
-    await connected.startAudio();
+    try { await connected.startAudio(); } catch { toast('A chamada entrou. Toque na tela para liberar o áudio neste navegador.'); }
     try { await connected.localParticipant.setMicrophoneEnabled(true, audioCapture()); }
     catch (error) { toast('Você entrou sem microfone. ' + errorText(error)); }
   } catch (error) { await leaveCall(); toast(errorText(error)); }
   finally { joining = false; updateCallUI(); }
 };
 $('leave-call').onclick = () => leaveCall();
+if(!canShareScreen){$('screen').disabled=true;$('screen').title='Este navegador não suporta compartilhar a tela';}
 for (const [id, property, method] of [['mic','isMicrophoneEnabled','setMicrophoneEnabled'],['camera','isCameraEnabled','setCameraEnabled'],['screen','isScreenShareEnabled','setScreenShareEnabled']]) {
   $(id).onclick = async () => {
     if (!room) return; $(id).disabled = true;
     try {
       const enabled = !room.localParticipant[property];
-      if (id === 'camera') await room.localParticipant.setCameraEnabled(enabled, CAMERA_CAPTURE, CAMERA_PUBLISH);
+      if (id === 'camera') {const media=mediaSettings();await room.localParticipant.setCameraEnabled(enabled,media.cameraCapture,media.cameraPublish);}
       else if (id === 'screen') {
-        await room.localParticipant.setScreenShareEnabled(enabled, SCREEN_CAPTURE, SCREEN_PUBLISH);
-        if(enabled&&SCREEN_CAPTURE.audio&&![...room.localParticipant.audioTrackPublications.values()].some(p=>p.source==='screen_share_audio'))toast('A tela foi compartilhada sem áudio. Escolha uma aba e marque Compartilhar áudio na janela do navegador.');
+        if(!canShareScreen)throw Error('Este navegador não oferece compartilhamento de tela. Em alguns celulares, use a opção de compartilhar tela do navegador ou do sistema.');
+        const media=mediaSettings();await room.localParticipant.setScreenShareEnabled(enabled,media.screenCapture,media.screenPublish);
+        if(enabled&&media.screenCapture.audio&&![...room.localParticipant.audioTrackPublications.values()].some(p=>p.source==='screen_share_audio'))toast('A tela foi compartilhada sem áudio. Escolha uma aba e marque Compartilhar áudio na janela do navegador.');
       }
       else await room.localParticipant[method](enabled, audioCapture());
     }
     catch (error) { toast(errorText(error)); }
-    finally { $(id).disabled = false; updateCallUI(); }
+    finally { $(id).disabled = id==='screen'&&!canShareScreen; updateCallUI(); }
   };
 }
-window.addEventListener('pagehide', () => { shuttingDown = true;audioPlayer.pause();if(presenceChannel)presenceChannel.untrack(); if (room) room.disconnect(); });
+window.addEventListener('pagehide', () => { shuttingDown = true;if(presenceChannel)presenceChannel.untrack(); if (room) room.disconnect(); });
 window.addEventListener('pageshow', () => { shuttingDown = false; });
 
 async function boot() {
@@ -321,8 +353,7 @@ async function boot() {
 }
 // Social features share the authenticated Supabase client and its row policies.
 let profile, people = [], friendships = [], conversations = [], socialSubscription, presenceChannel;
-let publicVoicePresence=[],lastPresenceSignature='',online = new Set(), home = false, pinsOnly = false, musicSubscription, musicState, musicUrl, musicVersion = 0, musicRevision = 0;
-const audioPlayer = new Audio();
+let publicVoicePresence=[],lastPresenceSignature='',online = new Set(), home = false, pinsOnly = false;
 let noise = localStorage.getItem('orbita-noise') !== 'false', deafened = false;
 const audioCapture = () => ({noiseSuppression:noise, echoCancellation:true, autoGainControl:true, channelCount:1});
 const scopeKey = target => target?.private ? 'conversation_id' : 'channel_id';
@@ -454,7 +485,6 @@ function incomingCall(event){
 }
 $('decline-call').onclick=()=>{$('incoming-call').hidden=true;};
 $('friends-nav').onclick=showFriends;
-$('music-toggle').onclick=()=>document.body.classList.toggle('show-music');
 $('settings').onclick=()=>showDialog('Seu perfil e áudio',container=>{
   const form=el('form');const name=inputField(form,'Nome de exibição',profile.display_name,50),username=inputField(form,'Nome de usuário (3–24 letras, números ou _)',profile.username,24),bio=inputField(form,'Sobre você',profile.bio,160),color=inputField(form,'Cor do perfil',profile.avatar_color,7);color.type='color';
   const label=el('label','check-field');const check=el('input');check.type='checkbox';check.checked=noise;label.append(check,document.createTextNode('Supressão de ruído do microfone'));form.append(label,el('p','muted','O navegador reduz ruído, eco e variações de volume. O resultado depende do dispositivo.'));
@@ -488,8 +518,8 @@ async function messageAction(message,action){
     if(message.attachments?.owner_id===session.user.id){
       const path=message.attachments.storage_path||message.attachments.file_id;
       if(path){
-        const music=await checked(db.from('music_state').select('id').eq('attachment_id',message.attachments.id).limit(1));
-        if(music.length){toast('Mensagem removida; o anexo continua disponível no player de música.');}
+        const legacy=await checked(db.from('music_state').select('id').eq('attachment_id',message.attachments.id).limit(1));
+        if(legacy.length){toast('O anexo foi preservado por uma referência antiga do banco.');}
         else{const {error}=await db.storage.from('orbita-files').remove([path]);if(error){toast('Mensagem removida; o anexo ficou guardado.');}else await checked(db.from('attachments').delete().eq('id',message.attachments.id).eq('owner_id',session.user.id));}
       }
     }
@@ -537,52 +567,6 @@ $('file-input').onchange=async()=>{
     if(version===generation)await refreshMessages();toast('Arquivo enviado.');
   }catch(e){toast(errorText(e));}finally{$('attach-file').disabled=false;$('file-input').value='';}
 };
-function renderMusicStatus(text){$('music-status').textContent=text;}
-async function watchMusic(target){
-  if(!config.storageConfigured){renderMusicStatus("Upload de música indisponível");return;}
-  const version=++musicVersion;musicState=null;audioPlayer.pause();audioPlayer.removeAttribute('src');if(musicUrl){URL.revokeObjectURL(musicUrl);musicUrl=null;}
-  if(musicSubscription)await db.removeChannel(musicSubscription);
-  renderMusicStatus('Escolha um áudio para ouvir juntos');$('music-play').textContent='▶';
-  const reload=async()=>{try{const data=await checked(db.from('music_state').select('*,attachments(id,owner_id,storage_path,file_id,name,mime_type,size)').eq(scopeKey(target),target.id).maybeSingle());if(version===musicVersion)await applyMusic(data,version);}catch(e){toast(errorText(e));}};
-  musicSubscription=db.channel('music-'+target.id+'-'+version).on('postgres_changes',{event:'*',schema:'public',table:'music_state',filter:`${scopeKey(target)}=eq.${target.id}`},reload).subscribe(status=>{if(status==='SUBSCRIBED')reload();});
-}
-async function applyMusic(state,version){
-  if(!state)return;const revision=++musicRevision;const changed=musicState?.attachment_id!==state.attachment_id;musicState=state;
-  if(changed){renderMusicStatus('Carregando '+state.attachments.name+'…');const url=await downloadAttachment(state.attachments,true);if(version!==musicVersion||revision!==musicRevision){URL.revokeObjectURL(url);return;}if(musicUrl)URL.revokeObjectURL(musicUrl);musicUrl=url;await new Promise(resolve=>{const timer=setTimeout(resolve,10000);const done=()=>{clearTimeout(timer);resolve();};audioPlayer.addEventListener('loadedmetadata',done,{once:true});audioPlayer.addEventListener('error',done,{once:true});audioPlayer.src=url;});}
-  if(version!==musicVersion||revision!==musicRevision)return;
-  const position=state.position+(state.playing?Math.max(0,(Date.now()-Date.parse(state.updated_at))/1000):0);
-  if(Number.isFinite(audioPlayer.duration)&&Math.abs(audioPlayer.currentTime-position)>1)audioPlayer.currentTime=Math.min(position,audioPlayer.duration);
-  renderMusicStatus(state.attachments.name);$('music-play').textContent=state.playing?'❚❚':'▶';
-  if(state.playing)try{await audioPlayer.play();}catch{renderMusicStatus('Clique em “Ouvir” para liberar o áudio');}else audioPlayer.pause();
-}
-async function setMusic(values){
-  if(!musicState)throw Error('Primeiro escolha um arquivo de áudio.');
-  await checked(db.from('music_state').update({...values,updated_by:session.user.id}).eq('id',musicState.id));
-}
-$('music-play').onclick=()=>setMusic({playing:!musicState?.playing,position:audioPlayer.currentTime}).catch(e=>toast(errorText(e)));
-$('music-listen').onclick=()=>audioPlayer.play().catch(()=>toast('Escolha uma música primeiro.'));
-$('music-volume').oninput=e=>{audioPlayer.volume=Number(e.target.value);};
-$('music-upload').onclick=()=>{if(!config.storageConfigured)return toast('O Storage do Supabase ainda não está configurado.');$('music-input').click();};
-$('music-input').onchange=async()=>{
-  const file=$('music-input').files[0],target=selected,version=musicVersion;if(!file||!target)return;
-  $('music-upload').disabled=true;
-  try{if(!file.type.startsWith('audio/'))throw Error('Escolha um arquivo de áudio compatível com o navegador.');const a=await uploadFile(file,target);
-    const existing=await checked(db.from('music_state').select('id').eq(scopeKey(target),target.id).maybeSingle());
-    const values={attachment_id:a.id,playing:true,position:0,updated_by:session.user.id};
-    if(existing)await checked(db.from('music_state').update(values).eq('id',existing.id));
-    else await checked(db.from('music_state').insert({...values,[scopeKey(target)]:target.id}));
-    if(version===musicVersion)toast('Música compartilhada com este espaço.');
-  }catch(e){toast(errorText(e));}finally{$('music-upload').disabled=false;$('music-input').value='';}
-};
-audioPlayer.addEventListener('ended',()=>{if(musicState?.updated_by===session?.user.id)setMusic({playing:false,position:0}).catch(e=>toast(errorText(e)));});
-$('music-seek').onchange=e=>setMusic({position:Number(e.target.value)}).catch(error=>toast(errorText(error)));
-audioPlayer.addEventListener('timeupdate',()=>{if(Number.isFinite(audioPlayer.duration)){$('music-seek').max=String(audioPlayer.duration);if(document.activeElement!==$('music-seek'))$('music-seek').value=String(audioPlayer.currentTime);}});
-setInterval(()=>{
-  if(!musicState?.playing||audioPlayer.paused||!Number.isFinite(audioPlayer.duration))return;
-  const expected=musicState.position+Math.max(0,(Date.now()-Date.parse(musicState.updated_at))/1000);
-  if(Math.abs(expected-audioPlayer.currentTime)>2&&expected<audioPlayer.duration)audioPlayer.currentTime=expected;
-},5000);
-
 let communities=[],activeCommunity='00000000-0000-4000-8000-000000000001',siteRoles=[],replyTarget=null,friendsFilter='all',extraSubscription;
 const isAdmin=()=>siteRoles.some(r=>r.user_id===session?.user.id);
 const managesCommunity=()=>isAdmin()||communities.find(c=>c.id===activeCommunity)?.created_by===session?.user.id;
@@ -605,7 +589,7 @@ function navigation(direct=false){
   $('sidebar-scroll-content').classList.toggle('hidden',direct);$('dm-scroll-content').classList.toggle('hidden',!direct);
   $('friends-nav').classList.toggle('active',direct);$('server-banner-box').classList.toggle('hidden',direct);
   $('sidebar-server-title').textContent=direct?'Mensagens Diretas':communities.find(c=>c.id===activeCommunity)?.name||'Órbita';
-  $('create-channel').hidden=!managesCommunity();document.body.classList.remove('mobile-menu-open');
+  $('create-channel').hidden=!managesCommunity();closeMobileMenu();
 }
 function renderCommunityRail(){
   $('rail-servers-list').replaceChildren();
@@ -682,8 +666,9 @@ $('dm-quick-find').onclick=()=>showDialog('Busca rápida',container=>{const form
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('dm-quick-find').click();}});
 $('btn-search-toggle').onclick=()=>$('search-messages').focus();
 $('btn-members-toggle').onclick=()=>{document.body.classList.toggle(matchMedia('(max-width:1080px)').matches?'members-open':'members-hidden');$('btn-members-toggle').classList.toggle('active');};
-$('mobile-menu-btn').onclick=()=>document.body.classList.toggle('mobile-menu-open');
-for(const view of ['friends-view','voice-view']){const target=$(view).querySelector('.chat-title');const menu=button('☰',()=>document.body.classList.toggle('mobile-menu-open'),'mobile-nav-btn');menu.setAttribute('aria-label','Menu de canais');target.prepend(menu);}
+  $('mobile-menu-btn').onclick=()=>{const open=document.body.classList.toggle('mobile-menu-open');$('mobile-menu-btn').setAttribute('aria-expanded',String(open));};
+document.addEventListener('click',event=>{if(!document.body.classList.contains('mobile-menu-open'))return;const target=event.target;if(!(target instanceof Element)||!target.closest('.sidebar,.rail,#mobile-menu-btn,.mobile-nav-btn'))closeMobileMenu();});
+for(const view of ['friends-view','voice-view']){const target=$(view).querySelector('.chat-title');const menu=button('☰',()=>{const open=document.body.classList.toggle('mobile-menu-open');menu.setAttribute('aria-expanded',String(open));},'mobile-nav-btn');menu.setAttribute('aria-label','Menu de canais');menu.setAttribute('aria-expanded','false');target.prepend(menu);}
 
 $('up-profile-btn').onclick=()=>$('status-popover').classList.toggle('hidden');
 document.querySelectorAll('.sp-opt').forEach(opt=>opt.onclick=async()=>{try{const value=opt.dataset.status==='offline'?'invisible':opt.dataset.status||'online';await checked(db.from('profiles').update({presence_status:['online','idle','dnd','invisible'].includes(value)?value:'online'}).eq('id',session.user.id));$('status-popover').classList.add('hidden');await loadSocial();if(presenceChannel){if(value==='invisible')await presenceChannel.untrack();else await publishVoicePresence(true);}updateSelfStatus();}catch(e){toast(errorText(e));}});
@@ -718,12 +703,12 @@ function openCloud(){showDialog('Sobre esta versão',container=>{container.appen
 $('dd-boost-btn').onclick=openCloud;$('banner-action-btn').onclick=openCloud;$('drive-info').onclick=openCloud;
 $('up-mic-btn').onclick=()=>$('mic').click();$('up-deafen-btn').onclick=()=>$('deafen').click();$('vb-mic').onclick=()=>$('mic').click();$('vb-video').onclick=()=>$('camera').click();$('dock-name').onclick=()=>{if(callChannel)selectChannel(callChannel);};
 $('back-to-call').onclick=()=>{if(selected?.private){const c=conversations.find(c=>c.id===selected.id);if(c)openConversation(c);}else{const c=channels.find(c=>c.community_id===activeCommunity&&c.kind==='text');if(c)selectChannel(c);}};
-$('connection-info').onclick=()=>showDialog('Conexão da chamada',container=>{container.append(el('p','',room?'Estado: '+room.state:'Você ainda não está em uma chamada.'));if(room){container.append(el('p','','Qualidade local: '+room.localParticipant.connectionQuality));for(const p of room.remoteParticipants.values())container.append(el('p','',(p.name||'Participante')+' · '+p.connectionQuality));}container.append(el('p','muted','Vídeo e áudio se adaptam à rede. O áudio da tela depende do navegador e da opção escolhida na janela de compartilhamento.'));});
+$('connection-info').onclick=()=>showDialog('Conexão da chamada',container=>{container.append(el('p','',room?'Estado: '+room.state:'Você ainda não está em uma chamada.'));if(room){container.append(el('p','','Qualidade local: '+room.localParticipant.connectionQuality));for(const p of room.remoteParticipants.values())container.append(el('p','',(p.name||'Participante')+' · '+p.connectionQuality));}container.append(el('p','muted',`Vídeo adaptativo: perfil ${mediaSettings().mode}. O navegador ajusta a recepção à rede; áudio da tela só é liberado em abas e navegadores compatíveis.`));});
 let lastReaction=0;
 $('vc-react-call').onclick=async()=>{if(!room||Date.now()-lastReaction<2000)return;lastReaction=Date.now();try{await room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({type:'reaction',emoji:'🎉'})),{reliable:true,topic:'orbita-reaction'});toast('Você · 🎉');}catch(e){toast(errorText(e));}};
 function receiveCallData(payload,participant,_kind,topic){if(topic!=='orbita-reaction'||payload.length>200)return;try{const data=JSON.parse(new TextDecoder().decode(payload));if(data.type==='reaction'&&['🎉','❤️','👍','😂'].includes(data.emoji))toast((participant?.name||'Participante')+' · '+data.emoji);}catch{}}
 const screenLabel=el('label','screen-option'),screenCheck=el('input');screenCheck.type='checkbox';screenCheck.id='share-screen-audio';screenCheck.checked=localStorage.getItem('orbita-screen-audio')!=='false';screenLabel.append(screenCheck,document.createTextNode('Incluir áudio da tela (autorize também na janela do navegador)'));$('active-controls').before(screenLabel);
-function updateScreenAudio(){SCREEN_CAPTURE.audio=screenCheck.checked;SCREEN_CAPTURE.systemAudio=screenCheck.checked?'include':'exclude';SCREEN_CAPTURE.surfaceSwitching='include';localStorage.setItem('orbita-screen-audio',String(screenCheck.checked));}
+function updateScreenAudio(){localStorage.setItem('orbita-screen-audio',String(screenCheck.checked));}
 screenCheck.onchange=updateScreenAudio;updateScreenAudio();
 $('btn-notif-toggle').onclick=async()=>{if(!('Notification'in window))return toast('Este navegador não oferece notificações.');const permission=await Notification.requestPermission();toast(permission==='granted'?'Notificações ativadas neste navegador.':'Notificações não autorizadas.');};
 document.body.dataset.theme=localStorage.getItem('orbita-theme')||'orbita';document.body.dataset.density=localStorage.getItem('orbita-density')||'cozy';
