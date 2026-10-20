@@ -433,12 +433,38 @@ $('message-form').onsubmit = event => {
 };
 
 
-function onTrack(track, participant) {
-  if (track.kind === 'video' && $('media-grid').querySelector(`[data-track="${track.sid}"]`)) return;
-  const media = track.attach(); media.dataset.track = track.sid;
+const callMedia = new Map();
+function disposeMedia(entry) {
+  if (callMedia.get(entry.key) !== entry) return;
+  callMedia.delete(entry.key);
+  for (const cleanup of entry.cleanups) cleanup();
+  // detach() may already have lost its elements. Remove our saved tile regardless.
+  try { entry.track.detach(entry.media); } catch {}
+  entry.tile?.remove(); entry.media.remove();
+}
+function syncCallMedia() {
+  const participants = room ? new Set([room.localParticipant.identity, ...room.remoteParticipants.keys()]) : new Set();
+  for (const entry of [...callMedia.values()]) {
+    if (!participants.has(entry.participantId)) { disposeMedia(entry); continue; }
+    if (entry.tile) entry.tile.hidden = !!(entry.track.isMuted || entry.publication?.isMuted);
+  }
+}
+function onTrack(track, participant, publication) {
+  const source = publication?.source || track.source || (track.kind === 'video' ? 'camera' : 'microphone');
+  const key = JSON.stringify([participant.identity, source]);
+  const previous = callMedia.get(key);
+  if (previous?.track === track) { previous.publication = publication || previous.publication; syncCallMedia(); return; }
+  if (previous) disposeMedia(previous);
+  const media = track.attach(), sid = publication?.trackSid || track.sid;
+  if (sid) media.dataset.track = sid;
+  const entry = {key, track, media, publication, participantId:participant.identity, cleanups:[]};
+  callMedia.set(key, entry);
+  const ended = () => disposeMedia(entry);
+  if (track.on) { track.on('ended', ended); entry.cleanups.push(() => track.off?.('ended', ended)); }
+
   if (track.kind === 'video') {
-    const isScreen = track.source === 'screen_share';
-    const figure = el('figure', 'media-tile' + (isScreen ? ' media-screen' : '')); figure.dataset.track = track.sid;figure.dataset.participantId=participant.identity;
+    const isScreen = source === 'screen_share';
+    const figure = el('figure', 'media-tile' + (isScreen ? ' media-screen' : '')); if(sid)figure.dataset.track=sid;figure.dataset.participantId=participant.identity;entry.tile=figure;
     media.muted = true; media.playsInline = true;
     const caption = el('figcaption');
     caption.append(el('span', '', (participant.name || 'Participante') + (isScreen ? ' · Tela' : ' · Câmera')));
@@ -452,16 +478,30 @@ function onTrack(track, participant) {
         else toast('Este navegador não oferece tela cheia para este vídeo.');
       } catch (error) { toast(errorText(error)); }
     };
-    caption.append(expand);enhancements.decorateVideo(media,caption); figure.append(media, caption);
-    $('media-grid').append(figure);
+    caption.append(expand);enhancements.decorateVideo(media,caption);
+    const frame=el('div','media-frame'),status=el('span','video-status','Conectando vídeo…');status.setAttribute('role','status');
+    const ready=()=>{status.hidden=true;figure.classList.remove('media-loading');};
+    const waiting=()=>{if(media.readyState<2){status.hidden=false;status.textContent='Aguardando vídeo…';figure.classList.add('media-loading');}};
+    const failed=()=>{status.hidden=false;status.textContent='Não foi possível reproduzir este vídeo. Tente desligar e ligar a câmera.';figure.classList.add('media-loading');};
+    for(const [event,handler] of [['loadeddata',ready],['playing',ready],['waiting',waiting],['emptied',waiting],['error',failed]]) {media.addEventListener(event,handler);entry.cleanups.push(()=>media.removeEventListener(event,handler));}
+    figure.classList.add('media-loading');frame.append(media,status);figure.append(frame,caption);
+    $('media-grid').append(figure);if(media.readyState>=2)ready();
   } else { media.dataset.remoteAudio = 'true';media.dataset.participantId=participant.identity;media.muted=deafened;media.volume=Number(localStorage.getItem('orbita-volume-'+participant.identity)||'1');document.body.append(media); }
+  syncCallMedia();
 }
-function removeTrack(track) {
-  track.detach().forEach(node => { const tile = node.closest('.media-tile'); if (tile) tile.remove(); else node.remove(); });
+function removeTrack(track, publication, participant) {
+  const sid=publication?.trackSid || track?.sid;
+  for(const entry of [...callMedia.values()]) {
+    if(participant && entry.participantId!==participant.identity)continue;
+    // An old unsubscribe must not delete a replacement from the same participant.
+    if((track && entry.track===track) || (!track && sid && (entry.publication?.trackSid || entry.track.sid)===sid))disposeMedia(entry);
+  }
 }
+
 function qualityText(quality){return ({excellent:'Ótima conexão',good:'Boa conexão',poor:'Conexão instável',unknown:'Conectando'})[String(quality||'unknown').toLowerCase()]||'Conectando';}
 const participantCards=new Map();let participantRoom;
 function updateCallUI() {
+  syncCallMedia();
   const here = !!room && callChannel?.id === selected?.id && selected?.kind === 'voice';
   $('call-dock').hidden=!room;$('dock-name').textContent=callChannel?.name||'';$('call-dock').querySelector('.vb-ping').textContent=here?qualityText(room.localParticipant.connectionQuality):'Conectado';
   $('join-call').hidden = here; $('join-call').disabled = joining || !config?.callsConfigured;
@@ -501,9 +541,11 @@ function updateSpeakingUI() {
 async function leaveCall() {
   const previous = room;if(previous)microphoneSwitch.set(previous.localParticipant,false);room = null;callChannel = null;talkHeld=false;
   enhancements?.callEnded(previous);
-  if (previous) { previous.removeAllListeners(); await previous.disconnect(); }
+  if (previous) previous.removeAllListeners();
+  for(const entry of [...callMedia.values()])disposeMedia(entry);
   document.querySelectorAll('[data-remote-audio]').forEach(node => node.remove());
   $('media-grid').replaceChildren(); updateCallUI();
+  if (previous) await previous.disconnect();
 }
 $('join-call').onclick = async () => {
   if (joining || !session || selected?.kind !== 'voice') return;
@@ -535,13 +577,11 @@ $('join-call').onclick = async () => {
             :[ScreenSharePresets.h720fps30,ScreenSharePresets.h1080fps30],
       },
     }); room = connected; callChannel = target;
-    connected.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {onTrack(track, participant);updateCallUI();}).on(RoomEvent.TrackUnsubscribed, track => {removeTrack(track);updateCallUI();})
-      .on(RoomEvent.LocalTrackPublished, publication => { if (publication.track?.kind === 'video') onTrack(publication.track, connected.localParticipant); updateCallUI(); })
-      .on(RoomEvent.LocalTrackUnpublished, publication => {
-        if (publication.track) removeTrack(publication.track);
-        document.querySelectorAll(`[data-track="${publication.trackSid}"]`).forEach(node => node.remove());
-        updateCallUI();
-      });
+    connected.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {if(room!==connected)return;onTrack(track, participant, publication);updateCallUI();})
+      .on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {if(room!==connected)return;removeTrack(track, publication, participant);updateCallUI();})
+      .on(RoomEvent.TrackUnpublished, (publication, participant) => {if(room!==connected)return;removeTrack(publication.track,publication,participant);updateCallUI();})
+      .on(RoomEvent.LocalTrackPublished, publication => { if(room!==connected)return;if(publication.track?.kind==='video')onTrack(publication.track,connected.localParticipant,publication);updateCallUI(); })
+      .on(RoomEvent.LocalTrackUnpublished, publication => {if(room!==connected)return;removeTrack(publication.track,publication,connected.localParticipant);updateCallUI();});
     for (const event of [RoomEvent.ParticipantConnected, RoomEvent.ParticipantDisconnected, RoomEvent.TrackMuted, RoomEvent.TrackUnmuted]) connected.on(event, updateCallUI);
     connected.on(RoomEvent.ActiveSpeakersChanged,updateSpeakingUI);
     connected.on(RoomEvent.DataReceived,receiveCallData);

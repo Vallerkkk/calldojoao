@@ -1,6 +1,6 @@
 // Fake devices and rooms only; never opens a camera, microphone or connection.
 export const RoomEvent = Object.fromEntries([
-  'TrackSubscribed', 'TrackUnsubscribed', 'LocalTrackPublished', 'LocalTrackUnpublished',
+  'TrackSubscribed', 'TrackUnsubscribed', 'TrackUnpublished', 'LocalTrackPublished', 'LocalTrackUnpublished',
   'ParticipantConnected', 'ParticipantDisconnected', 'TrackMuted', 'TrackUnmuted',
   'ActiveSpeakersChanged', 'DataReceived', 'ConnectionQualityChanged', 'Reconnecting',
   'Reconnected', 'Disconnected', 'ParticipantPermissionsChanged',

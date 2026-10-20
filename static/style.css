@@ -2470,3 +2470,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 }
 @media(prefers-reduced-motion:reduce){.voice-view,.friends-view{animation:none!important}.channel:hover,.primary:hover{transform:none}}
 
+
+/* Track lifecycle: retain controls while awaiting frames, never show an empty black video. */
+.media-frame{position:relative;min-height:150px;background:var(--bg-elevated);display:grid;place-items:center}.media-frame video{grid-area:1/1;min-height:150px}.video-status{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:var(--text-dim);background:var(--bg-elevated);font-size:13px;line-height:1.5}.media-loading video{visibility:hidden}.media-tile:fullscreen .media-frame{flex:1;min-height:0;width:100%}
+
+@media(max-width:780px){body:has(#call-dock:not([hidden])) #drive-info{bottom:calc(84px + env(safe-area-inset-bottom))}}
