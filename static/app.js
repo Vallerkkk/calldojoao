@@ -7,6 +7,7 @@ const CAMERA_CAPTURE = {resolution: {width:1920, height:1080, frameRate:30}};
 const SCREEN_CAPTURE = {resolution: {width:1920, height:1080, frameRate:30}, contentHint:'detail', audio:true, systemAudio:'include', surfaceSwitching:'include'};
 const CAMERA_PUBLISH = {videoEncoding: {maxBitrate:4_500_000, maxFramerate:30}, degradationPreference:'balanced'};
 const SCREEN_PUBLISH = {screenShareEncoding: {maxBitrate:6_000_000, maxFramerate:30}, degradationPreference:'maintain-resolution'};
+const chCache = new Map(); let renderQueued = 0, renderWantsBottom = false, searchTimer;
 let toastTimer;
 function toast(message) {
   $('toast').textContent = message; $('toast').hidden = false;
@@ -86,6 +87,7 @@ function renderChannels() {
   }
 }
 async function selectChannel(channel) {
+  if (selected?.kind === 'text' && messages.size) chCache.set(selected.id, {messages: new Map(messages), oldest, hasMore});
   $('message-input').value = '';home=false;pinsOnly=false;
   $('friends-view').hidden=true;$('search-messages').value='';
   $('private-call').hidden=!channel.private||channel.kind!=='text';
@@ -98,7 +100,8 @@ async function selectChannel(channel) {
   if (channel.kind === 'voice') {
     $('voice-title').textContent = channel.name; updateCallUI(); return;
   }
-  messages = new Map(); oldest = null; hasMore = false; loading = false; renderMessages();
+  const cached = chCache.get(channel.id); messages = cached ? new Map(cached.messages) : new Map(); oldest = cached?.oldest || null; hasMore = cached?.hasMore || false; loading = false; renderMessagesNow(true);
+  if (!cached) $('message-list').append(skeleton());
   subscription = db.channel((channel.private?'direct-':'messages-') + channel.id + '-' + version)
     .on('postgres_changes', {event: '*', schema: 'public', table: messageTable(), filter: `${scopeKey(channel)}=eq.${channel.id}`}, async payload => {
       if(payload.eventType==='DELETE'){if(version===generation){messages.delete(payload.old.id);renderMessages();}return;}
@@ -114,7 +117,8 @@ async function selectChannel(channel) {
       if (version !== generation) return;
       if (status === 'SUBSCRIBED') loadMessages(version, true);
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        toast('A conexão ao vivo falhou. Carregando o histórico; reabra o canal para reconectar.');
+        toast('Conexão ao vivo perdida. Tentando reconectar…');
+        setTimeout(() => { if (version === generation && selected?.id === channel.id) selectChannel(channel).catch(() => {}); }, 4000);
         loadMessages(version, true);
       }
     });
@@ -130,22 +134,34 @@ async function loadMessages(version, first = false) {
     if (version !== generation) return;
     if (error) throw error;
     const list = $('message-list'), height = list.scrollHeight, top = list.scrollTop;
+    if (first) messages = new Map();
     data.forEach(m => messages.set(m.id, m)); oldest = data.at(-1) || oldest; hasMore = data.length === 60;
-    renderMessages(first);
+    renderMessagesNow(first);
     if (!first) list.scrollTop = top + list.scrollHeight - height;
   } catch (error) { toast('Erro ao carregar mensagens: ' + errorText(error)); }
   finally { if (version === generation) loading = false; }
 }
 function renderMessages(scroll = false) {
-  const list = $('message-list'), top = list.scrollTop; list.replaceChildren();
+  renderWantsBottom = renderWantsBottom || scroll;
+  if (renderQueued) return;
+  renderQueued = requestAnimationFrame(() => { renderQueued = 0; const s = renderWantsBottom; renderWantsBottom = false; renderMessagesNow(s); });
+}
+function skeleton() {
+  const box = el('div', 'skeletons'); box.setAttribute('aria-hidden', 'true');
+  for (let i = 0; i < 5; i++) box.append(el('div', 'skeleton'));
+  return box;
+}
+function renderMessagesNow(scroll = false) {
+  if (renderQueued) { cancelAnimationFrame(renderQueued); renderQueued = 0; scroll = scroll || renderWantsBottom; renderWantsBottom = false; }
+  const list = $('message-list'), top = list.scrollTop, frag = document.createDocumentFragment();
+  const search = $('search-messages').value.trim().toLocaleLowerCase();
   const welcome = el('div', 'welcome'); welcome.append(el('div', 'welcome-icon', '#'),
     el('h1', '', (selected.private?'Sua conversa com ':'Bem-vindo a #') + selected.name), el('p', '', selected.private?'Mensagens e chamadas visíveis apenas para vocês dois.':'Um espaço para conversar, compartilhar e estar junto.'));
-  list.append(welcome);
-  if (hasMore) { const more = el('button', 'load-more', 'Carregar mensagens anteriores'); more.onclick = () => loadMessages(generation); list.append(more); }
+  frag.append(welcome);
+  if (hasMore) { const more = el('button', 'load-more', 'Carregar mensagens anteriores'); more.onclick = () => loadMessages(generation); frag.append(more); }
   const sorted = [...messages.values()].sort((a,b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
   for (const message of sorted) {
     if(pinsOnly&&!message.pinned)continue;
-    const search=$('search-messages').value.trim().toLocaleLowerCase();
     if(search&&!message.content.toLocaleLowerCase().includes(search))continue;
     const name = message.profiles?.display_name || 'Participante';
     const item = el('article', 'message'), content = el('div', 'message-content'), meta = el('div', 'message-meta');
@@ -160,8 +176,9 @@ function renderMessages(scroll = false) {
     for(const emoji of ['👍','❤️','😂','🎉','🔥','👀']){const count=(message.reactions||[]).filter(r=>r.emoji===emoji).length;actions.append(button(emoji+(count?' '+count:''),()=>react(message,emoji),'reaction'));}
     if(message.author_id===session.user.id||(!selected.private&&isAdmin())){actions.append(button('Editar',()=>messageAction(message,'edit'),'tiny-button'),button(message.pinned?'Desafixar':'Fixar',()=>messageAction(message,'pin'),'tiny-button'),button('Excluir',()=>messageAction(message,'delete'),'tiny-button'));}
     content.append(actions);const avatar=el('div','avatar',initials(name));avatar.style.background=message.profiles?.avatar_color||'#8b80ff';
-    item.append(avatar,content);list.append(item);
+    item.append(avatar,content);frag.append(item);
   }
+  list.replaceChildren(frag);
   list.scrollTop = scroll ? list.scrollHeight : top;
 }
 $('message-input').onkeydown = event => {
@@ -473,7 +490,7 @@ $('create-channel').onclick=()=>showDialog('Novo canal',container=>{
   form.onsubmit=async e=>{e.preventDefault();save.disabled=true;try{const c=await checked(db.from('channels').insert({name:name.value.trim(),kind:type.value,position:channels.length+1,community_id:activeCommunity}).select().single());channels.push(c);$('app-dialog').close();await selectChannel(c);}catch(e){toast(errorText(e));}finally{save.disabled=false;}};
 });
 $('dialog-close').onclick=()=>$('app-dialog').close();
-$('search-messages').oninput=()=>renderMessages();
+$('search-messages').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>renderMessages(),150);};
 $('pins-toggle').onclick=()=>{pinsOnly=!pinsOnly;$('pins-toggle').setAttribute('aria-pressed',String(pinsOnly));renderMessages();};
 $('back-to-call').onclick=()=>{if(callChannel)selectChannel(callChannel);};
 $('dock-leave').onclick=()=>leaveCall();
@@ -736,3 +753,15 @@ async function publishVoicePresence(force=false){
   const signature=JSON.stringify(value);if(!force&&signature===lastPresenceSignature)return;lastPresenceSignature=signature;await presenceChannel.track(value);
 }
 boot();
+
+// Rolagem infinita: carrega mensagens antigas ao chegar perto do topo (sem precisar clicar).
+{ let ticking = false;
+  $('message-list').addEventListener('scroll', e => {
+    if (ticking) return; ticking = true;
+    requestAnimationFrame(() => { ticking = false;
+      if (e.target.scrollTop < 160 && hasMore && !loading && selected?.kind === 'text') loadMessages(generation);
+    });
+  }, {passive: true});
+  // Voltou a internet: reabre o canal atual para restabelecer o tempo real.
+  addEventListener('online', () => { if (selected?.kind === 'text') selectChannel(selected).catch(() => {}); toast('Conexão restabelecida.'); });
+}
