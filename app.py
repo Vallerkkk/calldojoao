@@ -11,16 +11,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from livekit import api
-from integrations import install, drive_configured, MAX_UPLOAD
-from admin_features import install as install_admin, firebase_config
+from integrations import install
+from community_features import install_features
 
-import sys
-ROOT = Path(sys._MEIPASS) if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent
-# Quando empacotado, o .env fica ao lado do executável
-if getattr(sys, 'frozen', False):
-    load_dotenv(Path(sys.executable).parent / '.env')
-else:
-    load_dotenv(ROOT / '.env')
+ROOT = Path(__file__).resolve().parent
+load_dotenv(ROOT / '.env')
 app = FastAPI(title='Órbita', docs_url=None, redoc_url=None)
 bearer = HTTPBearer(auto_error=False)
 
@@ -37,7 +32,7 @@ async def headers(request, call_next):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'same-origin'
     response.headers['Permissions-Policy'] = 'camera=(self), microphone=(self), display-capture=(self)'
-    if request.url.path.startswith('/api/'):
+    if request.url.path.startswith('/api/') or request.url.path in ('/', '/sw.js', '/healthz'):
         response.headers['Cache-Control'] = 'no-store'
     return response
 
@@ -49,8 +44,9 @@ def config():
     return {'supabaseUrl': s['SUPABASE_URL'],
             'supabaseKey': s['SUPABASE_PUBLISHABLE_KEY'],
             'configured': ready,
-            'firebaseConfig': firebase_config(),
-            'driveConfigured': drive_configured(), 'uploadLimit': MAX_UPLOAD,
+            'storageConfigured': True, 'uploadLimit': 26214400,
+            'pushPublicKey': os.getenv('VAPID_PUBLIC_KEY',''),
+            'pushConfigured': all(os.getenv(k) for k in ('VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY','PUSH_TRANSPORT_KEY')),
             'callsConfigured': all(s[k] for k in ('LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'))}
 
 
@@ -95,10 +91,18 @@ async def join(channel_id: UUID, identity=Depends(current_user)):
         raise HTTPException(404, 'Canal inexistente ou sem acesso.')
     if channels[0]['kind'] != 'voice':
         raise HTTPException(400, 'Este canal é de texto.')
-    return make_token(user, f'channel-{channel_id}')
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            permissions = await client.post(s['SUPABASE_URL'] + '/rest/v1/rpc/call_permissions', headers=auth_headers, json={'target': str(channel_id)})
+        if permissions.is_error:
+            raise HTTPException(403, 'Você não tem acesso a esta sala.')
+        rights = permissions.json()
+    except httpx.HTTPError:
+        raise HTTPException(503, 'Não foi possível verificar as permissões da sala.')
+    return make_token(user, f'channel-{channel_id}', can_publish=rights['can_publish'], stage=rights['stage'], moderator=rights['moderator'])
 
 
-def make_token(user, room_name):
+def make_token(user, room_name, can_publish=True, stage=False, moderator=False):
     s = settings()
     if not all(s[k] for k in ('LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET')):
         raise HTTPException(503, 'As chamadas ainda não foram configuradas.')
@@ -106,8 +110,18 @@ def make_token(user, room_name):
     token = (api.AccessToken(s['LIVEKIT_API_KEY'], s['LIVEKIT_API_SECRET'])
         .with_identity(user['id']).with_name(name).with_ttl(timedelta(minutes=10))
         .with_grants(api.VideoGrants(room_join=True, room=room_name,
-            can_publish=True, can_subscribe=True, can_publish_data=True)).to_jwt())
-    return JSONResponse({'url': s['LIVEKIT_URL'], 'token': token})
+            can_publish=can_publish, can_subscribe=True, can_publish_data=True)).to_jwt())
+    return JSONResponse({'url': s['LIVEKIT_URL'], 'token': token, 'canPublish':can_publish, 'stage':stage, 'moderator':moderator})
+
+
+@app.api_route('/healthz', methods=['GET','HEAD'])
+async def healthz():
+    return {'status':'ok', 'service':'orbita'}
+
+
+@app.get('/sw.js')
+async def service_worker():
+    return FileResponse(ROOT / 'static' / 'service-worker.js', media_type='application/javascript', headers={'Service-Worker-Allowed':'/'})
 
 
 @app.get('/')
@@ -116,6 +130,6 @@ def index():
 
 
 install(app, current_user, settings, make_token)
-install_admin(app, current_user, settings)
+install_features(app, current_user, settings)
 
 app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')

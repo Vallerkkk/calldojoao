@@ -1,42 +1,25 @@
-# Órbita — frontend integrado
+# Órbita — interface revisada
 
-O visual foi adaptado de `DEEPSEEK/INDEX.html`. O JavaScript de demonstração foi substituído pela integração do Supabase e LiveKit; usuários, histórico, contagens e chamadas fictícias não são usados em produção.
+A referência desta versão é o arquivo orbita.html da pasta Órbita/SITEEE-configuracao-gratuita. O visual foi adaptado ao aplicativo real: Supabase para contas, mensagens e arquivos; LiveKit para chamadas. Os dados e as ações simulados da referência não foram incorporados.
 
-## Funções conectadas
+## O que mudou
 
-- Comunidades abertas, criação e exploração; links para abrir a comunidade.
-- Canais de texto, voz e vídeo; administração de canais pelo dono da comunidade ou pelos administradores do site.
-- Amigos, pedidos, conversas e chamadas privadas.
-- Respostas a mensagens, enquetes persistentes, um voto por pessoa, reações e formatação básica segura de texto.
-- Perfil, status, aparência, densidade, notificações locais do navegador e redução de ruído do microfone.
-- Participantes reais de salas públicas na barra lateral. Chamadas privadas não são identificadas na presença pública.
-- Compartilhamento de tela com solicitação de áudio. No Brave/Chrome, selecione uma aba e marque **Compartilhar áudio** na janela do navegador. O suporte para som do sistema, janelas e telas depende do navegador e do sistema operacional. O site não consegue ativar uma fonte que o navegador não fornece.
-- Administração de comunidades e moderação de mensagens públicas. O acesso de administrador não libera as conversas privadas de terceiros.
+- Painéis escuros com acentos roxos, navegação lateral, compositor destacado e tema claro opcional.
+- Ações de mensagens no menu ⋯, reações existentes abaixo do texto e agrupamento de mensagens consecutivas.
+- Menu lateral por gesto ou botão no celular, controles de toque de 44 px, teclado acompanhado por visualViewport e retorno às mensagens recentes.
+- Atualização das mensagens preserva os elementos sem alterações; anexos reutilizam URLs assinadas na memória; falantes ativos atualizam apenas o destaque.
+- Acessibilidade de teclado, identificação de botões e opção reduzir movimento.
 
-## Criadores
-
-VallerJP foi vinculado pelo ID da conta existente como criador/administrador. Alterar o nome de exibição não transfere esse poder para outra conta.
-
-Para Kalil, foi reservado um convite privado, de uso único e válido por sete dias. Após se cadastrar com o nome de exibição **Kalil**, ele deve abrir **Configurações → Aceitar convite de criador** e informar o código fornecido pelo proprietário. O código não está no GitHub nem no JavaScript público. Escolher o nome Kalil, sozinho, não concede poderes administrativos.
-
-## Drive e banco
-
-O Drive guarda arquivos e cópias JSON do banco da comunidade. O Supabase permanece como banco ativo de contas, mensagens e permissões, pois oferece as operações simultâneas e o controle de acesso necessários ao chat. O arquivo JSON no Drive é uma cópia de dados, não substitui essas funções nem é um backup transacional.
-
-Depois da autorização Google, administradores podem usar **Google Cloud e arquivos → Salvar cópia do banco no Drive**. São incluídos perfis públicos, comunidades, canais, mensagens públicas, cargos, arquivos públicos, reações, votos e estado de música públicos. Conversas privadas, credenciais de autenticação e segredos do servidor não são exportados. O limite de cada cópia é 25 MB.
-
-A autorização Google ainda é necessária. Veja `GOOGLE_DRIVE.md` e a ferramenta local `conectar_drive.py`. A pasta é privada na conta do proprietário; não são criados links públicos para os anexos.
-
-## Google Cloud gratuito
-
-Foi preparado o Firebase Performance Monitoring, com ativação opcional pelo usuário nas configurações Google do site. Para ativar o serviço é necessário registrar o aplicativo Web em um projeto Firebase e configurar no servidor `FIREBASE_WEB_CONFIG` com o JSON **público** fornecido pelo Firebase. Nunca coloque um JSON de conta de serviço ou uma chave privada nessa variável.
-
-Não houve migração da hospedagem e não foram ativados serviços pagos do Google Cloud. O site continua em Render + Supabase + LiveKit. A configuração de recursos e credenciais Google depende da autorização do proprietário; o código não declara a integração ativa quando os dados não estão configurados.
+Os recursos do pacote de colaboração estão descritos em RECURSOS.md. As três migrações aditivas 20261020033840, 20261020034054 e 20261020034553 já foram aplicadas ao projeto Supabase existente. O frontend antigo permanece compatível.
 
 ## Validação
 
-21 testes automatizados passaram. Consultas somente de leitura verificaram a função de administrador, bloqueio de autopromoção, proteção dos convites, acesso privado e validação das enquetes. A interface foi revisada no navegador com dados de demonstração. O teste que criaria contas temporárias em produção foi bloqueado pela revisão automática e não foi executado.
+20 testes Python passaram. Testes de navegador com contas e mensagens simuladas verificaram envio, edição com confirmação, threads, busca no histórico, menções, compressão, tema claro/escuro, preservação de elementos e comportamento com menor altura de tela. A navegação entre servidores, amigos e salas foi exercitada em 320, 768 e 1440 px; o fluxo completo também foi testado em 390 px.
 
-Uma chamada real entre dois dispositivos, áudio de tela entre participantes, transferência real pelo Drive e os dados recebidos pelo Firebase precisam ser verificados após a autorização/configuração Google e com dispositivos disponíveis.
+Chamadas entre dispositivos reais e entrega de push em celulares não foram verificadas neste ambiente. O push depende das variáveis privadas no Render; o UptimeRobot depende de uma conta do proprietário. Nenhum serviço pago adicional foi contratado.
 
-O diagnóstico do Supabase mantém um aviso anterior de [proteção contra senhas vazadas desativada](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection). Essa preferência não foi alterada nesta atualização.
+## Publicação
+
+O pacote é publicado pelo repositório Vallerkkk/calldojoao, branch main, no serviço existente orbita do Render. As credenciais permanecem nas variáveis do serviço; o arquivo .env não deve ser versionado. As configurações privadas de Web Push são aplicadas diretamente ao ambiente do Render.
+
+As credenciais locais na pasta jesus são preservadas. Nunca publique o arquivo .env nem chaves privadas.

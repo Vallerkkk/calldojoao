@@ -1,0 +1,61 @@
+// Requires Playwright and a local running server. Uses only mock accounts.
+const {chromium}=require(process.env.ORBITA_PLAYWRIGHT || 'playwright');
+const fs=require('fs'),path=require('path');
+const tmp=path.resolve(__dirname,'../work/browser-temp');fs.mkdirSync(tmp,{recursive:true});process.env.TEMP=tmp;process.env.TMP=tmp;
+const USER='11111111-1111-4111-8111-111111111111',OTHER='22222222-2222-4222-8222-222222222222',COMM='00000000-0000-4000-8000-000000000001',TEXT='33333333-3333-4333-8333-333333333333',VOICE='44444444-4444-4444-8444-444444444444';
+const p={id:USER,display_name:'Pessoa de teste',username:'pessoa_teste',bio:'Perfil local para validação',avatar_color:'#7c5cff',presence_status:'online',custom_status:'Testando',avatar_url:'',banner_url:'',pronouns:'',presence_activity:''};
+const messages=Array.from({length:70},(_,i)=>({id:`55555555-5555-4555-8555-${String(i+1).padStart(12,'0')}`,channel_id:TEXT,author_id:i%2?OTHER:USER,content:i===0?'mensagem muito antiga azulejo':'Mensagem de teste '+i,created_at:new Date(Date.now()-(70-i)*60000).toISOString(),pinned:false,reply_to:null,thread_root:null,edited_at:null,profiles:i%2?{...p,id:OTHER,display_name:'Outra pessoa',username:'colega'}:p,attachments:null,reactions:[],poll_votes:[]}));
+const fixtures={profiles:[p,{...p,id:OTHER,display_name:'Outra pessoa',username:'colega'}],communities:[{id:COMM,name:'Comunidade de teste',description:'Validação local',created_by:USER,is_default:true,invite_only:false}],channels:[{id:TEXT,name:'geral',kind:'text',community_id:COMM,position:0,default_for_new_members:true,created_by:USER},{id:VOICE,name:'Sala Principal',kind:'voice',community_id:COMM,position:1,created_by:USER}],community_members:[{community_id:COMM,user_id:USER},{community_id:COMM,user_id:OTHER}],site_roles:[{user_id:USER,role:'creator'}],messages,community_roles:[],community_member_roles:[],community_emojis:[],friendships:[],conversations:[],reactions:[],poll_votes:[],attachments:[],audit_log:[],community_moderation:[]};
+const stub=`const data=${JSON.stringify(fixtures)};window.__qaData=data;const uid='${USER}';
+const user={id:uid,email:'local@example.invalid',user_metadata:{display_name:'Pessoa de teste'}};
+function query(table){let filters=[],operation='select',value,single=false,limit=1e9,offset=0,ascending=true,orderCol,head=false,search='';const q={};
+ for(const key of ['eq','neq','is','in','gt','lt'])q[key]=(col,v)=>{filters.push([key,col,v]);return q;};
+ q.select=(cols,options)=>{head=!!options?.head;return q};q.order=(col,opt={})=>{if(!orderCol){orderCol=col;ascending=opt.ascending!==false;}return q};q.limit=v=>{limit=v;return q};q.range=(a,b)=>{offset=a;limit=b-a+1;return q};q.or=pattern=>{const match=pattern.match(/^created_at\\.(lt|gt)\\.([^,]+)/);if(match)filters.push([match[1],'created_at',match[2]]);return q};q.match=()=>q;
+ q.single=()=>{single=true;return q};q.maybeSingle=q.single;q.insert=v=>{operation='insert';value=v;return q};q.update=v=>{operation='update';value=v;return q};q.delete=()=>{operation='delete';return q};q.upsert=q.insert;q.textSearch=(col,v)=>{search=v;return q};
+ q.then=(resolve,reject)=>Promise.resolve().then(()=>{data[table]||=[];let rows=data[table].filter(r=>filters.every(([k,c,v])=>k==='eq'?r[c]===v:k==='neq'?r[c]!==v:k==='is'?(r[c]??null)===v:k==='in'?v.includes(r[c]):k==='gt'?r[c]>v:r[c]<v));
+ if(operation==='insert'){rows=(Array.isArray(value)?value:[value]).map(v=>({id:crypto.randomUUID(),created_at:new Date().toISOString(),thread_root:null,...v,profiles:data.profiles.find(p=>p.id===v.author_id),attachments:data.attachments.find(a=>a.id===v.attachment_id),reactions:[],poll_votes:[]}));data[table].push(...rows);}
+ if(operation==='update')rows.forEach(r=>Object.assign(r,value));if(operation==='delete')data[table]=data[table].filter(r=>!rows.includes(r));if(search)rows=rows.filter(r=>r.content?.toLowerCase().includes(search.toLowerCase()));if(orderCol)rows.sort((a,b)=>String(a[orderCol]??'').localeCompare(String(b[orderCol]??''))*(ascending?1:-1));const count=rows.length;rows=rows.slice(offset,offset+limit);return {data:head?null:single?rows[0]||null:structuredClone(rows),error:null,count};}).then(resolve,reject);return q;}
+export function createClient(){return {auth:{getSession:async()=>({data:{session:{user,access_token:'qa-token'}}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}}),signOut:async()=>({error:null})},from:query,rpc:async(name)=>({data:name==='ensure_default_community'?'${COMM}':true,error:null}),channel:(name)=>{let handlers=[];const c={on:(type,f,fn)=>{handlers.push([type,f,fn]);return c},subscribe:fn=>{setTimeout(()=>fn?.('SUBSCRIBED'),20);return c},track:async()=>{},untrack:async()=>{},send:async()=>{},presenceState:()=>({[uid]:[{status:'online'}]})};return c},removeChannel:async()=>{},storage:{from:()=>({upload:async()=>({error:null}),remove:async()=>({error:null}),createSignedUrl:async()=>({data:{signedUrl:'/static/icons/icon-192.png'},error:null})})}}}`;
+
+fs.writeFileSync(path.join(tmp,'qa-supabase-stub.mjs'),stub);
+(async()=>{
+ const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe',args:['--no-sandbox']});
+ const report=[];
+ for(const mobile of [false,true]){console.log('QA viewport',mobile?'mobile':'desktop');
+  const context=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1440,height:1000},isMobile:mobile,hasTouch:mobile,serviceWorkers:'allow'});
+  await context.route('**/*',async route=>{const url=route.request().url();if(url.includes('supabase-js'))return route.fulfill({contentType:'application/javascript',body:url.endsWith('/+esm')?stub:''});if(url.endsWith('/api/config'))return route.fulfill({json:{configured:true,supabaseUrl:'https://qa.supabase.co',supabaseKey:'public-qa',callsConfigured:true,storageConfigured:true,uploadLimit:26214400,pushConfigured:false}});return route.continue();});
+  const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+  await page.goto((process.env.ORBITA_TEST_URL || 'http://127.0.0.1:8765/'),{waitUntil:'networkidle'});
+  try{await page.locator('#message-list .message').first().waitFor({timeout:10000});}catch(e){console.log('BOOT',await page.locator('#auth-status').textContent(),await page.locator('#toast').textContent(),errors);throw e;}
+  if(await page.locator('body').evaluate(el=>el.scrollWidth)> (mobile?391:1441))throw Error('Horizontal overflow '+mobile);
+  const title=await page.locator('#channel-title').boundingBox();if(!title||title.width<35)throw Error('Channel title hidden');
+  await page.locator('#message-list .message').last().evaluate(node=>{window.__qaMessageNode=node});
+  await page.locator('#message-input').fill('Olá @co');await page.locator('#autocomplete-popover button').first().click();
+  if(!(await page.locator('#message-input').inputValue()).includes('@colega'))throw Error('Mention autocomplete failed');
+  await page.locator('#message-input').fill('Mensagem via formulário');await page.locator('#message-form').evaluate(form=>form.requestSubmit());
+  await page.getByText('Mensagem via formulário',{exact:true}).waitFor();if(!await page.evaluate(()=>window.__qaMessageNode.isConnected))throw Error('Unchanged row was rebuilt');
+  await page.locator('.message').last().locator('summary').click();await page.locator('.message').last().getByRole('button',{name:'Thread',exact:true}).click();
+  await page.locator('.thread-form textarea').fill('Resposta em thread');await page.locator('.thread-form button').click();await page.locator('.thread-replies').getByText('Resposta em thread',{exact:true}).waitFor();
+  console.log('QA thread passed');await page.getByRole('button',{name:'Fechar Thread',exact:true}).click();
+  await page.locator('#search-messages').fill('azulejo');await page.locator('#search-messages').press('Enter');await page.locator('.feature-panel').getByText('mensagem muito antiga azulejo',{exact:true}).waitFor();
+  console.log('QA search passed');await page.getByRole('button',{name:'Fechar Buscar mensagens',exact:true}).click();
+  const compression=await page.evaluate(async()=>{const {compressImage}=await import('/static/media-utils.js');const canvas=document.createElement('canvas');canvas.width=canvas.height=1000;const ctx=canvas.getContext('2d'),pixels=ctx.createImageData(1000,1000);crypto.getRandomValues(pixels.data.subarray(0,64000));for(let i=3;i<pixels.data.length;i+=4)pixels.data[i]=255;ctx.putImageData(pixels,0,0);const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));const file=new File([blob],'avatar.png',{type:'image/png'}),result=await compressImage(file,'avatar');const bitmap=await createImageBitmap(result);return {before:file.size,after:result.size,width:bitmap.width,type:result.type};});
+  if(compression.after>=compression.before||compression.width>384)throw Error('Compression failed '+JSON.stringify(compression));
+  await page.locator('#message-list .message').last().locator('summary').click();await page.locator('#message-list .message').last().getByRole('button',{name:'Editar',exact:true}).click();await page.locator('#dialog-content input').fill('Mensagem editada com confirmação');await page.locator('#dialog-content button[type=submit]').click();await page.getByRole('button',{name:'Salvar alteração',exact:true}).click();await page.locator('#message-list').getByText('Mensagem editada com confirmação',{exact:true}).waitFor();await page.locator('#app-dialog').waitFor({state:'hidden'});
+  if(mobile){await page.evaluate(()=>{const start=new Touch({identifier:1,target:document.body,clientX:8,clientY:200});document.body.dispatchEvent(new TouchEvent('touchstart',{bubbles:true,touches:[start]}));const end=new Touch({identifier:1,target:document.body,clientX:120,clientY:200});document.body.dispatchEvent(new TouchEvent('touchend',{bubbles:true,touches:[],changedTouches:[end]}));});if(!await page.locator('body').evaluate(el=>el.classList.contains('mobile-menu-open')))throw Error('Menu swipe failed');}
+  if(mobile){await page.evaluate(()=>document.body.classList.remove('mobile-menu-open'));await page.waitForTimeout(250);}
+  await page.locator('#message-list').evaluate(list=>list.scrollTop=0);await page.locator('.jump-latest').waitFor({state:'visible'});await page.locator('.jump-latest').click();await page.locator('.jump-latest').waitFor({state:'hidden'});await page.waitForTimeout(250);
+  if(mobile)await page.evaluate(()=>document.body.classList.remove('mobile-menu-open'));
+  await page.waitForTimeout(300);const darkLabel=mobile?'mobile':'desktop';await page.screenshot({path:path.join(tmp,'interface-'+darkLabel+'-dark.png')});
+  if(mobile){await page.locator('#mobile-menu-btn').click();await page.waitForTimeout(250);}
+  // Settings are reachable on desktop and through the channel drawer on mobile.
+  await page.locator('#settings').click();await page.getByLabel('Tema claro ou escuro').selectOption('light');
+  if(await page.locator('body').getAttribute('data-color-mode')!=='light')throw Error('Light theme failed');
+  await page.locator('#dialog-close').click();await page.evaluate(()=>document.body.classList.remove('mobile-menu-open'));
+  await page.waitForTimeout(350);if(mobile){await page.setViewportSize({width:390,height:500});await page.waitForTimeout(100);const bottom=await page.locator('#message-form').evaluate(e=>e.getBoundingClientRect().bottom);if(bottom>502)throw Error('Keyboard viewport covers composer '+bottom);await page.setViewportSize({width:390,height:844});await page.waitForTimeout(100);}const label=mobile?'mobile':'desktop';await page.screenshot({path:path.join(tmp,'qa-'+label+'.png')});
+  const health=await page.request.get('http://127.0.0.1:8765/healthz');if(health.status()!==200)throw Error('healthz failed');
+  const manifest=await page.request.get('http://127.0.0.1:8765/static/manifest.webmanifest');if((await manifest.json()).icons.length<3)throw Error('Manifest incomplete');
+  if(errors.length)throw Error('Browser errors: '+errors.join('; '));report.push({viewport:label,compression,errors:0});await context.close();
+ }
+ console.log(JSON.stringify(report));await browser.close();
+})().catch(error=>{console.error(error);process.exit(1)});

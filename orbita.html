@@ -2,15 +2,15 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b0916">
-<meta name="mobile-web-app-capable" content="yes">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Órbita — Comunidade, Chat & Voz em Tempo Real</title>
-<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<link rel="stylesheet" href="/static/style.css?v=upgrade-20261020">
-<link rel="stylesheet" href="/static/discord.css?v=discord-1">
-<link rel="stylesheet" href="/static/fluidez.css?v=fluidez-1">
-<link rel="stylesheet" href="/static/orbita-v2.css?v=v2-1">
+<link rel="stylesheet" href="/static/style.css?v=interface-20261020-2">
+<meta name="theme-color" content="#10101b">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="/static/icons/icon.svg">
+<link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+<link rel="stylesheet" href="/static/enhancements.css?v=interface-20261020-2">
+<link rel="stylesheet" href="/static/interface.css?v=interface-20261020-2">
 </head>
 <body>
 
@@ -134,7 +134,7 @@
           <span class="dot"></span>
           Voz conectada
         </div>
-        <span class="vb-ping">18 ms • RTC</span>
+        <span class="vb-ping">Conectado</span>
       </div>
       <div class="vb-name" id="dock-name" title="Clique para voltar ao palco de voz">Sala Principal / Órbita</div>
       <div class="vb-actions">
@@ -224,7 +224,7 @@
     <div class="voice-view" id="text-view" style="background: transparent;">
       <header class="chat-header">
         <div class="chat-title">
-          <button class="mobile-nav-btn" id="mobile-menu-btn" title="Menu de Canais">
+          <button class="mobile-nav-btn" id="mobile-menu-btn" title="Menu de canais" aria-expanded="false" aria-controls="sidebar-scroll-content">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <line x1="3" y1="6" x2="21" y2="6"/>
               <line x1="3" y1="12" x2="21" y2="12"/>
@@ -339,16 +339,7 @@
               <line x1="15" y1="9" x2="15.01" y2="9"/>
             </svg>
           </button>
-          <button type="button" class="icon-btn" id="music-toggle" title="Ouvir juntos">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="20 12 20 22 4 22 4 12"/>
-              <rect x="2" y="7" width="20" height="5"/>
-              <line x1="12" y1="22" x2="12" y2="7"/>
-              <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
-              <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
-            </svg>
-          </button>
-        <button type="submit" id="send" class="send-live" aria-label="Enviar mensagem">➤</button></form>
+          <button type="submit" id="send" class="send-live" aria-label="Enviar mensagem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" stroke-linecap="round"/></svg></button></form>
       </div>
     </div>
 
@@ -381,7 +372,7 @@
             <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
           </svg>
           <h2 id="voice-title">Sala Principal</h2>
-          <span class="ch-desc" id="call-status">4 participantes • Simulcast 1080p</span>
+          <span class="ch-desc" id="call-status">Voz, câmera e tela em tempo real</span>
         </div>
         <div class="chat-actions">
           <button id="back-to-call" title="Voltar ao chat de texto mantendo a call">
@@ -441,7 +432,7 @@
   <!-- ============================================================
        MEMBERS SIDEBAR
   ============================================================ -->
-  <aside class="members" id="members-sidebar"><div class="member-heading">MEMBROS <span id="member-count"></span><span id="online-count"></span></div><div id="member-list"></div><section class="music-panel" id="music-panel"><h3>♫ Ouvir juntos</h3><p id="music-status">Escolha uma música</p><input id="music-seek" type="range" min="0" max="100" value="0" aria-label="Posição da música"><div class="music-buttons"><button id="music-play" aria-label="Reproduzir ou pausar">▶</button><button id="music-listen">Ouvir</button><button id="music-upload" aria-label="Escolher música">＋</button></div><label>Volume <input id="music-volume" type="range" min="0" max="1" step="0.05" value="1"></label><input id="music-input" type="file" accept="audio/*" hidden></section></aside>
+  <aside class="members" id="members-sidebar"><div class="member-heading">MEMBROS <span id="member-count"></span><span id="online-count"></span></div><div id="member-list"></div></aside>
 
 </div>
 
@@ -462,7 +453,6 @@
 </div>
 
 
-
 <div id="toast" role="status" hidden></div>
 <input type="file" id="file-input" hidden>
 <button id="private-call" class="private-call primary" hidden>Ligar em particular ↗</button>
@@ -471,4 +461,4 @@
 <button id="back-to-call-dock" hidden>Voltar à chamada</button>
 <div id="incoming-call" class="incoming-call" hidden><strong id="incoming-name"></strong><button id="answer-call" class="primary">Atender</button><button id="decline-call" class="danger">Recusar</button></div>
 <dialog id="app-dialog"><div class="dialog-header"><h2 id="dialog-title"></h2><button id="dialog-close" aria-label="Fechar">×</button></div><div id="dialog-content"></div></dialog>
-<script type="module" src="/static/app.js?v=fluidez-1"></script><script src="/static/discord.js?v=discord-1" defer></script><script src="/static/mobile.js?v=v2-1" defer></script><div id="creators-credit" class="creators-credit"></div></body></html>
+<script type="module" src="/static/app.js?v=interface-20261020-2"></script><div id="creators-credit" class="creators-credit"></div></body></html>

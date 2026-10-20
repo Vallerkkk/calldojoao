@@ -5,7 +5,6 @@ import httpx
 import jwt
 from fastapi.testclient import TestClient
 import app
-from integrations import storage_proof, MAX_UPLOAD
 
 USER='22222222-2222-4222-8222-222222222222'
 OTHER='33333333-3333-4333-8333-333333333333'
@@ -35,18 +34,6 @@ class IntegrationTests(unittest.TestCase):
   with self.remote():response=self.post(f'/api/conversations/{TARGET}/join')
   token=jwt.decode(response.json()['token'],ENV['LIVEKIT_API_SECRET'],algorithms=['HS256'])
   self.assertEqual(token['video']['room'],'direct-'+TARGET)
- def test_drive_requires_configuration(self):
-  with self.remote():response=self.post(f'/api/attachments?target_kind=channel&target_id={TARGET}',content=b'test')
-  self.assertEqual(response.status_code,503)
- def test_tampered_file_metadata_never_reaches_google(self):
-  record={'owner_id':USER,'channel_id':TARGET,'conversation_id':None,'file_id':'owned-file','name':'original.txt','size':4,'mime_type':'text/plain'}
-  record['storage_proof']=storage_proof(record);record['file_id']='somebody-elses-file'
-  with self.remote(record=record):response=self.client.get(f'/api/attachments/{TARGET}/download',headers={'Authorization':'Bearer test'})
-  self.assertEqual(response.status_code,403)
- def test_oversized_upload_rejected_before_oauth(self):
-  with patch.dict(os.environ,{k:'configured' for k in ('GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','GOOGLE_DRIVE_REFRESH_TOKEN','GOOGLE_DRIVE_FOLDER_ID')}),self.remote():
-   response=self.client.post(f'/api/attachments?target_kind=channel&target_id={TARGET}',headers={'Authorization':'Bearer test','Content-Length':str(MAX_UPLOAD+1)},content=b'x')
-  self.assertEqual(response.status_code,413)
  def test_google_credentials_are_not_exposed(self):
   with patch.dict(os.environ,{'GOOGLE_CLIENT_SECRET':'do-not-disclose','GOOGLE_DRIVE_REFRESH_TOKEN':'never-return-token'}):response=self.client.get('/api/config')
   self.assertNotIn('do-not-disclose',response.text);self.assertNotIn('never-return-token',response.text)

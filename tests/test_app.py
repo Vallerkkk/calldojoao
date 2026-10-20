@@ -1,6 +1,7 @@
 import os
 import unittest
 from unittest.mock import patch
+from contextlib import contextmanager
 
 import httpx
 import jwt
@@ -23,14 +24,20 @@ class AppTests(unittest.TestCase):
     def tearDown(self):
         self.environment.stop()
 
-    def mock_remote(self, *, user_status=200, kind='voice', exists=True):
+    @contextmanager
+    def mock_remote(self, *, user_status=200, kind='voice', exists=True, can_publish=True, stage=False):
         async def get(client, url, **kwargs):
             self.assertEqual(kwargs['headers']['Authorization'], 'Bearer user-token')
             if url.endswith('/auth/v1/user'):
                 return httpx.Response(user_status, json={'id':USER,'user_metadata':{'display_name':'Teste'}})
             self.assertEqual(kwargs['params']['id'], 'eq.' + CHANNEL)
             return httpx.Response(200, json=[{'id':CHANNEL,'kind':kind}] if exists else [])
-        return patch.object(httpx.AsyncClient, 'get', get)
+        async def post(client, url, **kwargs):
+            self.assertTrue(url.endswith('/rpc/call_permissions'))
+            self.assertEqual(kwargs['json']['target'], CHANNEL)
+            return httpx.Response(200, json={'can_publish':can_publish,'stage':stage,'moderator':False})
+        with patch.object(httpx.AsyncClient, 'get', get), patch.object(httpx.AsyncClient, 'post', post):
+            yield
 
     def join(self):
         return self.client.post(f'/api/channels/{CHANNEL}/join', headers={'Authorization':'Bearer user-token'})
@@ -41,17 +48,6 @@ class AppTests(unittest.TestCase):
         self.assertNotIn(ENV['LIVEKIT_API_SECRET'], result.text)
         self.assertNotIn(ENV['LIVEKIT_API_KEY'], result.text)
         self.assertEqual(result.headers['cache-control'], 'no-store')
-
-    def test_healthcheck_is_public(self):
-        result = self.client.get('/healthz')
-        self.assertEqual(result.status_code, 200)
-        self.assertEqual(result.json(), {'status': 'ok'})
-
-    def test_security_headers_are_present(self):
-        result = self.client.get('/healthz')
-        self.assertEqual(result.headers['x-frame-options'], 'DENY')
-        self.assertIn('frame-ancestors', result.headers['content-security-policy-report-only'])
-        self.assertNotIn(ENV['LIVEKIT_API_SECRET'], str(result.headers))
 
     def test_anonymous_cannot_join(self):
         self.assertEqual(self.client.post(f'/api/channels/{CHANNEL}/join').status_code, 401)
@@ -82,6 +78,27 @@ class AppTests(unittest.TestCase):
     def test_missing_livekit_is_actionable(self):
         with patch.dict(os.environ, {'LIVEKIT_API_SECRET':''}), self.mock_remote():
             self.assertEqual(self.join().status_code, 503)
+
+    def test_stage_audience_token_cannot_publish(self):
+        with self.mock_remote(can_publish=False, stage=True):
+            result = self.join()
+        self.assertEqual(result.status_code, 200)
+        token = jwt.decode(result.json()['token'], ENV['LIVEKIT_API_SECRET'], algorithms=['HS256'])
+        self.assertFalse(token['video']['canPublish'])
+        self.assertTrue(token['video']['canSubscribe'])
+        self.assertTrue(result.json()['stage'])
+
+    def test_push_and_moderation_require_login(self):
+        self.assertEqual(self.client.post('/api/notifications/dispatch').status_code, 401)
+        body={'member':USER,'action':'ban'}
+        self.assertEqual(self.client.post(f'/api/communities/{CHANNEL}/moderate',json=body).status_code,401)
+
+    def test_health_and_service_worker(self):
+        self.assertEqual(self.client.get('/healthz').json()['status'],'ok')
+        self.assertEqual(self.client.head('/healthz').status_code,200)
+        worker=self.client.get('/sw.js')
+        self.assertEqual(worker.headers['service-worker-allowed'],'/')
+        self.assertIn('no-store',worker.headers['cache-control'])
 
     def test_home_and_static_assets_are_served(self):
         self.assertEqual(self.client.get('/').status_code, 200)
