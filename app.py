@@ -163,13 +163,13 @@ def install_page():
 
 @app.get('/baixar/Orbita-Windows.zip')
 def download_launcher():
-    return RedirectResponse('https://github.com/Vallerkkk/calldojoao/releases/download/desktop-v1.0.0/Orbita-1.0.0-x64.zip',
+    return RedirectResponse('https://github.com/Vallerkkk/calldojoao/releases/download/desktop-v1.0.1/Orbita-1.0.1-x64.zip',
         status_code=302, headers={'Cache-Control':'no-store'})
 
 
 @app.get('/baixar/Orbita-Setup.exe')
 def download_desktop_installer():
-    return RedirectResponse('https://github.com/Vallerkkk/calldojoao/releases/download/desktop-v1.0.0/Orbita-Setup-1.0.0-x64.exe',
+    return RedirectResponse('https://github.com/Vallerkkk/calldojoao/releases/download/desktop-v1.0.1/Orbita-Setup-1.0.1-x64.exe',
         status_code=302, headers={'Cache-Control':'no-store'})
 
 
