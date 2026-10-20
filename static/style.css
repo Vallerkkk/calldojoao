@@ -2394,16 +2394,16 @@ button,input,select,textarea{touch-action:manipulation}
 .profile-banner{display:block;width:100%;max-height:180px;aspect-ratio:3/1;object-fit:cover;border-radius:12px;margin:0 0 16px;background:var(--bg-floating)}
 .profile-avatar{width:78px;height:78px;border-radius:50%;margin:-40px 0 10px 18px;position:relative;border:4px solid var(--bg-floating);background-color:var(--accent);background-size:cover;background-position:center;display:grid;place-items:center;font-size:23px;font-weight:800}
 .profile-upload-preview{display:block;max-width:min(100%,360px);max-height:160px;object-fit:contain;border-radius:10px;margin-top:9px}
-.participant-volume{display:flex;align-items:center;gap:8px;width:100%;font-size:11px;color:var(--text-muted)}
+.participant-volume{display:flex;align-items:center;gap:8px;width:100%;font-size:11px;color:var(--text-dim)}
 .participant-volume input{min-width:0;flex:1;accent-color:var(--accent)}
 .inline-custom-emoji{width:24px;height:24px;object-fit:contain;vertical-align:middle}
 .inline-sticker{display:block;max-width:min(100%,320px);max-height:280px;object-fit:contain;border-radius:10px;margin-top:8px}
 .custom-reaction img{width:18px;height:18px;object-fit:contain;vertical-align:middle}
 .role-assignment{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)}
-.role-assignment select{max-width:50%;background:var(--bg-floating);color:var(--text-primary);border:1px solid var(--border);border-radius:8px;padding:8px}
+.role-assignment select{max-width:50%;background:var(--bg-floating);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px}
 .role-badge{display:inline-block;font-size:9px;font-weight:800;margin-left:6px;padding:2px 5px;border:1px solid currentColor;border-radius:5px;vertical-align:middle}
-.channel-kind-badge{font-size:10px;color:var(--text-muted);margin-left:auto;padding-left:8px}
-.invite-link{width:100%;margin-top:10px;padding:10px;background:var(--bg-floating);color:var(--text-primary);border:1px solid var(--border);border-radius:9px}
+.channel-kind-badge{font-size:10px;color:var(--text-dim);margin-left:auto;padding-left:8px}
+.invite-link{width:100%;margin-top:10px;padding:10px;background:var(--bg-floating);color:var(--text);border:1px solid var(--border);border-radius:9px}
 .role-permissions{display:grid;gap:5px;border:1px solid var(--border);border-radius:10px;padding:10px;margin:10px 0}
 .emoji-admin-row{display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid var(--border)}
 .emoji-admin-row img{width:28px;height:28px;object-fit:contain}
