@@ -1,34 +1,22 @@
-# Órbita no computador e celular
+# Órbita Desktop para Windows
 
-Página pública de instalação: `/instalar`. O login e a barra de servidores também têm atalhos para essa página, em nova aba para preservar conversas e chamadas abertas.
+A página `/instalar` oferece o aplicativo Electron como opção principal. Ele tem motor próprio, janela independente, sessão própria, bandeja e seletor nativo de telas/janelas com áudio do sistema opcional. Não precisa de um navegador instalado para abrir sua janela. A versão web/PWA continua como alternativa para navegador e celulares.
 
-## Aplicativo pelo navegador — opção principal
+## Downloads
 
-O Órbita já possui manifesto, ícones e service worker. O novo fluxo captura o evento de instalação do navegador e solicita a confirmação somente após um clique. Quando a instalação automática não está disponível, mostra instruções para Edge/Chrome, outros navegadores e dispositivos móveis. Não declara a instalação concluída apenas porque o usuário aceitou o pedido: aguarda `appinstalled` ou detecta a janela de aplicativo.
+- `/baixar/Orbita-Setup.exe` redireciona ao instalador `Orbita-Setup-1.0.0-x64.exe` na versão oficial do GitHub.
+- `/baixar/Orbita-Windows.zip` agora redireciona ao aplicativo ZIP `Orbita-1.0.0-x64.zip`, substituindo o antigo pacote de atalho de internet. Extraia todos os arquivos e abra `Orbita.exe`.
+- Versão: https://github.com/Vallerkkk/calldojoao/releases/tag/desktop-v1.0.0
+- Hashes em `SHA256SUMS.txt`, nos anexos da versão.
 
-O navegador gerencia a instalação, o ícone e a janela independente. A aplicação continua sendo o site; mensagens, chamadas e login precisam da conexão. Nenhum executável próprio, script PowerShell, serviço do Windows, alteração de registro, pedido de administrador ou desativação de proteção é necessário. Não foi produzido um instalador EXE/MSIX assinado.
+O instalador é por usuário e cria atalhos. Não inicia automaticamente ao terminar nem com o Windows. Ao fechar a janela, o usuário escolhe continuar na bandeja ou encerrar. A primeira abertura pede login, pois o perfil do aplicativo é separado do navegador. Mensagens, arquivos e chamadas precisam da internet e usam o mesmo backend e banco existentes.
 
-## Download opcional para Windows
+O executável não possui assinatura Authenticode comercial. SmartScreen e outros antivírus podem mostrar avisos; não se garante ausência de bloqueios. Não desative proteções. Nenhuma técnica de evasão, alteração de antivírus ou exceção de certificado foi usada.
 
-`/baixar/Orbita-Windows.zip` baixa um pacote com apenas:
+## Código e validação
 
-- `Órbita.url`: atalho de internet para `https://orbita-8nwu.onrender.com/`.
-- `LEIA-ME.txt`: instruções de uso e instalação.
+Código desktop e instruções de compilação em `desktop/README.md`, com Electron e empacotador fixados no lockfile. Os instaladores ficam nos anexos de Releases, sem binários grandes no Git ou no servidor Render. A página e os dois redirecionamentos são públicos e apontam somente para arquivos de versão fixos do repositório oficial.
 
-O ZIP não instala nada. Após extrair, o atalho abre o site no navegador padrão; a instalação PWA é que oferece a janela independente. A versão do pacote no repositório é reproduzível e não contém código executável ou credenciais.
+Validados: empacotamento e correspondência do código do ASAR; fuses de segurança; login de produção carregado pelo Electron real em perfil isolado de teste; renderer sem Node; seletor com fontes simuladas e áudio mediante seleção. SHA-256 dos dois arquivos enviados conferidos com os digests do GitHub. Não se instala o programa no perfil pessoal do usuário durante o teste.
 
-## Segurança e limites
-
-Não é possível garantir ausência de alertas: SmartScreen, antivírus e políticas corporativas dependem do computador, do domínio e do navegador. Não foram usadas técnicas para ocultar arquivos ou contornar proteções. Se houver bloqueio, não desative proteções: use o endereço HTTPS e a instalação suportada pelo navegador. A página explica essas diferenças antes do download.
-
-## Verificação
-
-- Testes do backend conferem acesso público à página e ao download, cabeçalho de anexo, tipo ZIP e os dois únicos arquivos internos, incluindo a URL HTTPS exata.
-- Chrome automatizado em 1440, 390 e 320 pixels confere fallback de instalação, cancelamento, aceite, sinal de instalação concluída, download concluído, ausência de rolagem horizontal e erros JavaScript. Os eventos de instalação são simulados; não se instala software na máquina durante o teste.
-- A revisão de navegação desktop/celular continua passando. Nenhum banco, dependência ou plano de serviço foi alterado.
-- Instalação efetiva no menu Iniciar, reputação SmartScreen em computadores de terceiros e comportamento de cada antivírus não foram testados nem garantidos.
-
-Referências oficiais consultadas em 20/10/2026:
-
-- https://learn.microsoft.com/en-us/microsoft-edge/progressive-web-apps/ux
-- https://support.microsoft.com/en-US/edge/install-manage-or-uninstall-apps-in-microsoft-edge
+A página e seus estados de instalação web são testados em 1440, 390 e 320 px. O teste de download do navegador usa um arquivo pequeno simulado; os instaladores reais são verificados por hash separadamente. Chamadas entre duas pessoas, instalação em diferentes computadores e reputação SmartScreen ainda precisam de validação manual.

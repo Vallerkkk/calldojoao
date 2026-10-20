@@ -8,7 +8,7 @@ from uuid import UUID
 import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
@@ -163,8 +163,14 @@ def install_page():
 
 @app.get('/baixar/Orbita-Windows.zip')
 def download_launcher():
-    return FileResponse(ROOT / 'static' / 'downloads' / 'Orbita-Windows.zip',
-        filename='Orbita-Windows.zip', media_type='application/zip', headers={'Cache-Control':'no-store'})
+    return RedirectResponse('https://github.com/Vallerkkk/calldojoao/releases/download/desktop-v1.0.0/Orbita-1.0.0-x64.zip',
+        status_code=302, headers={'Cache-Control':'no-store'})
+
+
+@app.get('/baixar/Orbita-Setup.exe')
+def download_desktop_installer():
+    return RedirectResponse('https://github.com/Vallerkkk/calldojoao/releases/download/desktop-v1.0.0/Orbita-Setup-1.0.0-x64.exe',
+        status_code=302, headers={'Cache-Control':'no-store'})
 
 
 install(app, current_user, settings, make_token)

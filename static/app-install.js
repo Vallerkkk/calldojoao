@@ -23,7 +23,7 @@ if (document.body?.dataset.installPage === 'true') {
   const button = document.getElementById('install-app'), status = document.getElementById('install-status');
   function update() {
     button.disabled = prompting || isAppWindow();
-    button.textContent = isAppWindow() ? 'Órbita instalado neste navegador' : 'Instalar Órbita';
+    button.textContent = isAppWindow() ? 'Órbita instalado neste navegador' : 'Instalar versão do navegador';
     if (isAppWindow()) status.textContent = 'O aplicativo está pronto. Abra a Órbita pelo ícone ou continue usando o site.';
   }
   window.addEventListener('orbita-install-state', update); update();
