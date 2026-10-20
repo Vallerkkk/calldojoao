@@ -14,8 +14,8 @@ class LauncherTests(unittest.TestCase):
 
     def test_downloads_redirect_only_to_versioned_official_release(self):
         with TestClient(app.app) as client:
-            for path,asset in [('/baixar/Orbita-Windows.zip','Orbita-1.0.1-x64.zip'),('/baixar/Orbita-Setup.exe','Orbita-Setup-1.0.1-x64.exe')]:
+            for path,asset in [('/baixar/Orbita-Windows.zip','Orbita-1.0.2-x64.zip'),('/baixar/Orbita-Setup.exe','Orbita-Setup-1.0.2-x64.exe')]:
                 response=client.get(path,follow_redirects=False)
                 self.assertEqual(response.status_code,302)
-                self.assertEqual(response.headers['location'],'https://github.com/Vallerkkk/calldojoao/releases/download/desktop-v1.0.1/'+asset)
+                self.assertEqual(response.headers['location'],'https://github.com/Vallerkkk/calldojoao/releases/download/v1.0.2/'+asset)
                 self.assertIn('no-store',response.headers['cache-control'])

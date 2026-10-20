@@ -1,0 +1,57 @@
+name: Publicar Orbita Desktop
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: orbita-desktop-release
+  cancel-in-progress: false
+jobs:
+  windows:
+    # Standard hosted runners are free in this public repository. Do not run if made private.
+    if: ${{ github.event.repository.private == false }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Conferir tag e versao
+        run: node -e "const p=require('./desktop/package.json'),l=require('./desktop/package-lock.json');if(process.env.GITHUB_REF_NAME!=='v'+p.version||l.version!==p.version||!/^\d+\.\d+\.\d+$/.test(p.version))process.exit(1)"
+      - name: Instalar ferramentas fixadas no lockfile
+        working-directory: desktop
+        run: npm ci --ignore-scripts
+      - name: Preparar Electron
+        working-directory: desktop
+        run: node node_modules/electron/install.js
+      - name: Testar politica de atualizacoes e seguranca
+        working-directory: desktop
+        run: npm test
+      - name: Compilar Windows
+        working-directory: desktop
+        run: npm run dist
+      - name: Conferir arquivos e gerar hashes
+        run: node desktop/tests/verify-release.cjs
+      - name: Publicar somente apos anexar todos os arquivos
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content desktop/package.json -Raw | ConvertFrom-Json).version
+          $files = @(
+            "work/desktop-dist/Orbita-Setup-$version-x64.exe",
+            "work/desktop-dist/Orbita-$version-x64.zip",
+            "work/desktop-dist/Orbita-Setup-$version-x64.exe.blockmap",
+            'work/desktop-dist/latest.yml',
+            'work/desktop-dist/SHA256SUMS.txt'
+          )
+          gh release create "$env:GITHUB_REF_NAME" @files --repo "$env:GITHUB_REPOSITORY" --verify-tag --latest --generate-notes --title "Orbita Desktop $version"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
