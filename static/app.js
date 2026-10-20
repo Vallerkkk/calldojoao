@@ -1,10 +1,11 @@
+import { initSocialFeed } from './social-feed.js?v=feed-20261020-1';
 import { compressImage, relativeTime, safeLink, stickerNames } from './media-utils.js?v=fluency-20261020-2';
 import { initEnhancements } from './enhancements.js?v=launcher-20261020-1';
 import { DraftStore, serialToggle } from './runtime-utils.js?v=fluency-20261020-2';
 import { ConversationCache, MessageOutbox, conversationKey, requestWithDeadline } from './chat-state.js?v=fluency-20261020-2';
 import { reconcileNodes, reserveImage, focusElement } from './dom-utils.js?v=fluency-20261020-2';
 import { choosePrivateCall } from './private-call-menu.js?v=videochamada-20261020-1';
-let enhancements;
+let enhancements, feed;
 const drafts = new DraftStore(), pendingSends = new Set();
 const draftKey = target => session && target ? session.user.id + ':' + (target.private ? 'dm:' : 'channel:') + target.id : '';
 function saveComposerDraft() { if (!home && selected?.kind === 'text') drafts.set(draftKey(selected), $('message-input').value); }
@@ -94,6 +95,7 @@ $('auth-form').onsubmit = async event => {
 let sessionTransition=0,sessionReady=false,sessionInitializing=false;
 async function showSession(next) {
   if(session?.user.id===next?.user.id&&next&&(sessionReady||sessionInitializing)){session=next;return;}
+  feed?.sessionChanged();
   sessionInitializing=!!next;sessionReady=false;sessionRecovery.hidden=true;
   const previousUser=session?.user.id,transition=++sessionTransition;
   stopConversation();generation++;
@@ -129,7 +131,7 @@ async function showSession(next) {
     if(transition===sessionTransition)sessionReady=true;
   }catch(error){if(transition===sessionTransition){toast('Não foi possível carregar a comunidade: '+errorText(error));sessionRecovery.hidden=false;}}
   finally{if(transition===sessionTransition)sessionInitializing=false;}
-  if(transition===sessionTransition)await enhancements.sessionChanged();
+  if(transition===sessionTransition){await enhancements.sessionChanged();feed?.deepLink();}
 }
 $('logout').onclick = async () => {
   try { await enhancements?.disablePush(true); } catch {}
@@ -213,6 +215,7 @@ $('message-list').addEventListener('scroll', () => {
 $('message-list').addEventListener('load', event => { if (event.target instanceof HTMLImageElement && !home && selected?.kind === 'text') restorePosition(lastViewport); }, true);
 
 async function selectChannel(channel) {
+  feed?.hide();
   saveComposerDraft(); saveConversation(); stopConversation(); home = false; pinsOnly = false;
   $('friends-view').hidden = true; $('search-messages').value = ''; $('pins-toggle').setAttribute('aria-pressed', 'false');
   selected = channel; const version = ++generation; channelAbort = new AbortController();
@@ -762,6 +765,7 @@ function renderSocial() {
   enhancements?.decorateNavigation();
 }
 function showFriends() {
+  feed?.hide();
   navigationEpoch++;saveComposerDraft();saveConversation();stopConversation();home=true;generation++;
   $('friends-view').hidden=false;$('text-view').hidden=true;$('voice-view').hidden=true;
   $('channel-title').textContent='Amigos';$('channel-description').textContent='Sua galera, sempre por perto.';
@@ -1278,5 +1282,15 @@ updateCallUI=()=>{callBeforeEnhancements();enhancements.callUpdated();if(room?.s
 gifButton.onclick=()=>enhancements.showMediaPicker();
 $('file-input').multiple=true;
 $('file-input').onchange=async()=>{const files=[...$('file-input').files];await enhancements.sendFiles(files);$('file-input').value='';$('file-input').accept='';};
+feed=initSocialFeed({
+  state:()=>({db,session,profile,moderator:siteRoles.some(role=>role.user_id===session?.user.id&&['creator','admin'].includes(role.role))}),
+  el,toast,checked,showDialog,
+  profile:p=>p.id===session?.user.id?$('settings').click():showProfile(person(p.id)||p),
+  open:()=>{navigationEpoch++;saveComposerDraft();saveConversation();stopConversation();generation++;home=true;selected=null;
+    for(const id of ['text-view','voice-view','friends-view'])$(id).hidden=true;
+    renderChannels();renderSocial();updateCallUI();},
+  menu:()=>{document.body.classList.add('mobile-menu-open');document.querySelectorAll('.mobile-nav-btn').forEach(node=>node.setAttribute('aria-expanded','true'));},
+  closeMenu:closeMobileMenu
+});
 boot();
 
