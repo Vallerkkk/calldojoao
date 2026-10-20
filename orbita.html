@@ -4,12 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Órbita — Comunidade, Chat & Voz em Tempo Real</title>
-<link rel="stylesheet" href="/static/style.css?v=orbit-reference-20261020">
+<link rel="stylesheet" href="/static/style.css?v=orbit-flow-20261020">
 </head>
 <body>
 
 <section id="auth-view" class="auth-view">
-  <div class="intro"><a class="wordmark" href="/" aria-label="Órbita"><img src="/static/assets/logo-horizontal-claro.svg" alt="Órbita"><span>BETA</span></a><div><p class="eyebrow">PERTO, DE QUALQUER LUGAR</p><h1>As melhores ideias<br>começam com<br><em>uma conversa.</em></h1><p class="intro-copy">Seu espaço para conversar, criar e estar junto.<br>Texto, voz e vídeo. Tudo na mesma órbita.</p><div class="orbit-art" aria-hidden="true"><div class="planet">◉</div><span class="sat s1">voz</span><span class="sat s2">ideias</span><span class="sat s3">conexões</span></div></div><small>Um espaço compartilhado. Infinitas conversas.</small></div>
+  <div class="intro"><a class="wordmark" href="/">◉ ÓRBITA<span>BETA</span></a><div><p class="eyebrow">PERTO, DE QUALQUER LUGAR</p><h1>As melhores ideias<br>começam com<br><em>uma conversa.</em></h1><p class="intro-copy">Seu espaço para conversar, criar e estar junto.<br>Texto, voz e vídeo. Tudo na mesma órbita.</p><div class="orbit-art" aria-hidden="true"><div class="planet">◉</div><span class="sat s1">voz</span><span class="sat s2">ideias</span><span class="sat s3">conexões</span></div></div><small>Um espaço compartilhado. Infinitas conversas.</small></div>
   <div class="auth-card"><p class="eyebrow">BEM-VINDO À SUA COMUNIDADE</p><h2 id="auth-title">Bom ter você aqui.</h2><p id="auth-description" class="muted">Entre para encontrar a sua galera.</p>
   <div id="setup" class="notice" hidden>O site está pronto para configurar. Preencha o arquivo <code>.env</code> e execute <code>supabase.sql</code> no Supabase. Consulte o README da pasta.</div>
   <form id="auth-form"><label id="name-label" hidden>Como devemos chamar você?<input id="display-name" maxlength="50" autocomplete="nickname" placeholder="Seu nome"></label><label>E-mail<input id="email" type="email" autocomplete="email" required placeholder="voce@exemplo.com"></label><label>Senha<input id="password" type="password" minlength="8" autocomplete="current-password" required placeholder="Pelo menos 8 caracteres"></label><button id="auth-submit" class="primary" type="submit">Entrar na Órbita <span>↗</span></button></form>
@@ -56,7 +56,11 @@
   <aside class="sidebar">
     <header class="server-header" id="server-header-btn">
       <h1>
-        <img class="logo-mark" src="/static/assets/logo-marca.svg" alt="">
+        <svg class="logo-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="3" fill="currentColor"/>
+          <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-30 12 12)"/>
+          <circle cx="19" cy="7.5" r="1.5" fill="currentColor"/>
+        </svg>
         <span id="sidebar-server-title">Órbita</span>
         <span class="boost-pill" id="sidebar-boost-pill">COMUNIDADE</span>
       </h1>
@@ -452,5 +456,4 @@
 <button id="back-to-call-dock" hidden>Voltar à chamada</button>
 <div id="incoming-call" class="incoming-call" hidden><strong id="incoming-name"></strong><button id="answer-call" class="primary">Atender</button><button id="decline-call" class="danger">Recusar</button></div>
 <dialog id="app-dialog"><div class="dialog-header"><h2 id="dialog-title"></h2><button id="dialog-close" aria-label="Fechar">×</button></div><div id="dialog-content"></div></dialog>
-<script type="module" src="/static/app.js?v=orbit-reference-20261020"></script><div id="creators-credit" class="creators-credit"></div></body></html>
-
+<script type="module" src="/static/app.js?v=orbit-flow-20261020"></script><div id="creators-credit" class="creators-credit"></div></body></html>
