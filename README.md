@@ -21,3 +21,7 @@ Para instalar ou atualizar o esquema em um projeto Supabase novo, execute `supab
 Copie `.env.example` para `.env`, configure as variáveis e execute `iniciar_orbita.bat`. Os testes do servidor podem ser executados com `python -m unittest discover -s tests -v`.
 
 A permissão de microfone, câmera e compartilhamento de tela é solicitada pelo navegador. Para transmitir áudio da tela, selecione uma aba ou janela compatível e marque a opção de compartilhar áudio oferecida pelo próprio navegador.
+
+## Testes e segurança
+
+Instale `requirements-dev.txt` antes de rodar os testes. O servidor envia a política CSP em modo `Content-Security-Policy-Report-Only`: abra o site, confira se o console do navegador não mostra bloqueios e, então, troque o nome do cabeçalho em `app.py` para `Content-Security-Policy`. O endereço `/healthz` serve para o Render e para monitoramento gratuito.

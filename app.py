@@ -7,6 +7,7 @@ from uuid import UUID
 import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
@@ -25,15 +26,52 @@ def settings():
         'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET')}
 
 
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+
+def csp(s):
+    """Política de segurança de conteúdo. Enviada em modo de observação (Report-Only)
+    para não quebrar a interface; depois de testar, troque o nome do cabeçalho."""
+    livekit = s['LIVEKIT_URL'].replace('wss://', 'https://').replace('ws://', 'http://')
+    livekit_ws = s['LIVEKIT_URL'] or 'wss://*.livekit.cloud'
+    supabase = s['SUPABASE_URL'] or 'https://*.supabase.co'
+    supabase_ws = supabase.replace('https://', 'wss://').replace('http://', 'ws://')
+    return '; '.join([
+        "default-src 'self'",
+        "script-src 'self' https://cdn.jsdelivr.net",
+        "style-src 'self' 'unsafe-inline'",
+        f"img-src 'self' data: blob: {supabase}",
+        f"media-src 'self' blob: {supabase}",
+        f"connect-src 'self' https://cdn.jsdelivr.net {supabase} {supabase_ws} {livekit} {livekit_ws}",
+        "worker-src 'self' blob:",
+        "frame-ancestors 'none'",
+        "base-uri 'self'",
+        "object-src 'none'",
+    ])
+
+
 @app.middleware('http')
 async def headers(request, call_next):
     response = await call_next(request)
     response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
     response.headers['Referrer-Policy'] = 'same-origin'
     response.headers['Permissions-Policy'] = 'camera=(self), microphone=(self), display-capture=(self)'
-    if request.url.path.startswith('/api/'):
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['Content-Security-Policy-Report-Only'] = csp(settings())
+    path = request.url.path
+    if path.startswith('/api/'):
         response.headers['Cache-Control'] = 'no-store'
+    elif path.startswith('/static/') and 'Cache-Control' not in response.headers:
+        # Os arquivos usam ?v=... na URL, então o cache do navegador é seguro.
+        response.headers['Cache-Control'] = 'public, max-age=3600'
     return response
+
+
+@app.get('/healthz')
+def healthz():
+    """Verificação de saúde para o Render e para monitoramento gratuito (UptimeRobot)."""
+    return {'status': 'ok'}
 
 
 @app.get('/api/config')
