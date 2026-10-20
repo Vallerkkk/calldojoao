@@ -53,7 +53,10 @@ async function start(){
     if(['fullscreen','clipboard-sanitized-write','display-capture'].includes(permission))return callback(true);
     if(!['media','notifications'].includes(permission)||permissionDialog)return callback(false);
     const media=(details.mediaTypes||[]).filter(type=>['audio','video'].includes(type));
-    if(permission==='media'&&!media.length)return callback(false);
+    // Electron reports display capture as media with an empty mediaTypes list.
+    // No camera/microphone permission is persisted here: the display handler
+    // still validates the frame and requires an explicit source selection.
+    if(permission==='media'&&!media.length)return callback(Array.isArray(details.mediaTypes)&&details.mediaTypes.length===0);
     if(permission==='notifications'&&allowed.has(permission))return callback(true);
     if(permission==='media'&&media.every(type=>allowed.has(type)))return callback(true);
     permissionDialog=true;

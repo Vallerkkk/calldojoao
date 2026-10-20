@@ -1,16 +1,20 @@
-# Órbita Desktop 1.0.0 — Windows x64
+# Órbita Desktop 1.0.1 — Windows x64
 
 Aplicativo Electron com motor Chromium próprio, janela independente, sessão persistente, bandeja do Windows, notificações mediante permissão e seletor de telas/janelas com áudio do computador opcional. Não precisa de Brave, Chrome ou Edge instalados para abrir sua janela.
 
 O aplicativo acessa o Órbita em `https://orbita-8nwu.onrender.com/`. Mensagens, login, arquivos e chamadas continuam usando os serviços online existentes. Não é uma versão offline nem executa um banco de dados no computador. É necessário entrar na sua conta na primeira abertura; o perfil do aplicativo é separado do navegador.
 
+## Correção 1.0.1
+
+Corrige a recusa prematura de compartilhamento: o Electron solicita captura de tela como permissão `media` com `mediaTypes` vazio. Essa solicitação segue para o seletor, que exige escolha explícita. Não concede nem persiste acesso ao microfone ou à câmera. O teste agora percorre o pedido real `getDisplayMedia`, cancelamento, repetição e ausência de fontes.
+
 ## Distribuição
 
-- `Orbita-Setup-1.0.0-x64.exe`: instalador por usuário, atalho na área de trabalho e menu Iniciar; não inicia o aplicativo automaticamente ao terminar.
-- `Orbita-1.0.0-x64.zip`: versão sem instalador; extrair a pasta completa e abrir `Orbita.exe`. Manter DLLs e a pasta `resources` junto do executável.
+- `Orbita-Setup-1.0.1-x64.exe`: instalador por usuário, atalho na área de trabalho e menu Iniciar; não inicia o aplicativo automaticamente ao terminar.
+- `Orbita-1.0.1-x64.zip`: versão sem instalador; extrair a pasta completa e abrir `Orbita.exe`. Manter DLLs e a pasta `resources` junto do executável.
 - `SHA256SUMS.txt`: hashes dos dois arquivos publicados.
 
-Downloads oficiais: https://github.com/Vallerkkk/calldojoao/releases/tag/desktop-v1.0.0
+Downloads oficiais: https://github.com/Vallerkkk/calldojoao/releases/tag/desktop-v1.0.1
 
 Compilado para Windows 10/11 de 64 bits. A arquitetura ARM64 não foi compilada/testada. Ao fechar a janela, escolha continuar na bandeja ou encerrar o aplicativo; encerrar também encerra as chamadas. Não inicia com o Windows e não instala serviços.
 
