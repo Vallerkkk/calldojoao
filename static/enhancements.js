@@ -258,10 +258,10 @@ export function initEnhancements(context) {
   }
   document.addEventListener('paste',event=>{if(!state().session||!event.target.closest('#text-view,.thread-form'))return;const files=[...(event.clipboardData?.items||[])].filter(item=>item.kind==='file'&&item.type.startsWith('image/')).map(item=>item.getAsFile()).filter(Boolean);if(files.length){event.preventDefault();sendFiles(files);}});
   let dragCount=0;const drop=el('div','file-drop-zone','Solte seus arquivos para enviar');drop.hidden=true;document.body.append(drop);
-  document.addEventListener('dragenter',event=>{if(state().session&&[...(event.dataTransfer?.types||[])].includes('Files')){dragCount++;drop.hidden=false;}});
+  document.addEventListener('dragenter',event=>{if(state().session&&!document.querySelector('#feed-view:not([hidden])')&&[...(event.dataTransfer?.types||[])].includes('Files')){dragCount++;drop.hidden=false;}});
   document.addEventListener('dragover',event=>{if([...(event.dataTransfer?.types||[])].includes('Files'))event.preventDefault();});
   document.addEventListener('dragleave',()=>{if(--dragCount<=0)drop.hidden=true;});
-  document.addEventListener('drop',event=>{if(!state().session||!event.dataTransfer?.files.length)return;event.preventDefault();dragCount=0;drop.hidden=true;sendFiles([...event.dataTransfer.files]);});
+  document.addEventListener('drop',event=>{if(document.querySelector('#feed-view:not([hidden])')){event.preventDefault();dragCount=0;drop.hidden=true;return;}if(!state().session||!event.dataTransfer?.files.length)return;event.preventDefault();dragCount=0;drop.hidden=true;sendFiles([...event.dataTransfer.files]);});
   function showMediaPicker() {showDialog('GIFs e stickers',container=>{
     container.append(el('p','muted','Envie uma animação do dispositivo, um link direto HTTPS de GIF ou uma figurinha da Órbita.'));
     container.append(button('Enviar GIF ou imagem',()=>{$('app-dialog').close();$('file-input').accept='image/*';$('file-input').click();}));
