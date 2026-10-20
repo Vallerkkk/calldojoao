@@ -25,7 +25,7 @@ class Participant {
   }
   async setCameraEnabled(value) { this.isCameraEnabled = value; }
   async setScreenShareEnabled(value) { this.isScreenShareEnabled = value; }
-  async publishData() {}
+  async publishData(payload,options) {(window.__qaPublished||=[]).push({value:JSON.parse(new TextDecoder().decode(payload)),...options});}
 }
 
 export class Room {

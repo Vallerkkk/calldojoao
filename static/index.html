@@ -3,14 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://psreyaufhrquixfjzuek.supabase.co" crossorigin>
 <title>Órbita — Comunidade, Chat & Voz em Tempo Real</title>
-<link rel="stylesheet" href="/static/style.css?v=review-20261020-4">
+<link rel="stylesheet" href="/static/style.css?v=fluency-20261020-1">
 <meta name="theme-color" content="#10101b">
 <link rel="manifest" href="/static/manifest.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/static/icons/icon.svg">
 <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-<link rel="stylesheet" href="/static/enhancements.css?v=review-20261020-4">
-<link rel="stylesheet" href="/static/interface.css?v=review-20261020-4">
+<link rel="stylesheet" href="/static/enhancements.css?v=fluency-20261020-1">
+<link rel="stylesheet" href="/static/interface.css?v=fluency-20261020-1">
+<link rel="stylesheet" href="/static/fluency.css?v=fluency-20261020-1">
 </head>
 <body>
 
@@ -27,7 +30,7 @@
   <!-- ============================================================
        SERVER RAIL
   ============================================================ -->
-  <nav class="rail" id="server-rail">
+  <nav class="rail" id="server-rail" aria-label="Servidores e mensagens diretas">
     <button class="server-icon home" id="friends-nav" title="Início — Mensagens Diretas e Amigos">
       <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <circle cx="12" cy="12" r="3" fill="currentColor"/>
@@ -287,10 +290,11 @@
         </div>
       </header>
 
-      <div class="messages" id="message-list">
+      <div class="messages" id="message-list" role="log" aria-label="Histórico de mensagens" aria-live="off" aria-relevant="additions" tabindex="0">
         <div class="date-divider">Hoje</div>
       </div>
 
+      <p id="message-announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
       <div class="typing-indicator" id="typing-bar" hidden>
         <span class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>
         <span id="typing-text"></span>
@@ -460,5 +464,5 @@
 <span id="friends-badge" hidden></span>
 <button id="back-to-call-dock" hidden>Voltar à chamada</button>
 <div id="incoming-call" class="incoming-call" hidden><strong id="incoming-name"></strong><button id="answer-call" class="primary">Atender</button><button id="decline-call" class="danger">Recusar</button></div>
-<dialog id="app-dialog"><div class="dialog-header"><h2 id="dialog-title"></h2><button id="dialog-close" aria-label="Fechar">×</button></div><div id="dialog-content"></div></dialog>
-<script type="module" src="/static/app.js?v=review-20261020-4"></script><div id="creators-credit" class="creators-credit"></div></body></html>
+<dialog id="app-dialog" aria-labelledby="dialog-title"><div class="dialog-header"><h2 id="dialog-title"></h2><button id="dialog-close" aria-label="Fechar">×</button></div><div id="dialog-content"></div></dialog>
+<script type="module" src="/static/app.js?v=fluency-20261020-1"></script><div id="creators-credit" class="creators-credit"></div></body></html>
