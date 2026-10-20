@@ -135,7 +135,7 @@ async function selectChannel(channel) {
   $('pins-toggle').setAttribute('aria-pressed','false');
   selected = channel;$('message-input').value=drafts.get(draftKey(channel));updateComposer();closeMobileMenu(); const version = ++generation;
   if (subscription) { db.removeChannel(subscription); subscription = null; }
-  renderChannels(); renderSocial(); $('channel-title').textContent = channel.name;
+  renderChannels(); renderSocial(); renderMembers(); $('channel-title').textContent = channel.name;
   $('text-view').hidden = channel.kind !== 'text'; $('voice-view').hidden = channel.kind !== 'voice';requestAnimationFrame(resizeComposer);
   $('channel-description').textContent = channel.private?'Conversa privada · só vocês dois':channel.kind === 'text' ? 'O começo de boas conversas.' : 'Voz, vídeo e boas companhias.';
   if (channel.kind === 'voice') {
