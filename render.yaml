@@ -1,19 +1,19 @@
 services:
   - type: web
-    name: orbita-app
+    name: orbita
     runtime: python
     plan: free
-    healthCheckPath: /healthz
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    startCommand: python -m uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
     envVars:
-      - key: LIVEKIT_API_KEY
-        sync: false
-      - key: LIVEKIT_API_SECRET
-        sync: false
-      - key: LIVEKIT_URL
+      - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_PUBLISHABLE_KEY
         sync: false
-      - key: SUPABASE_URL
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
         sync: false

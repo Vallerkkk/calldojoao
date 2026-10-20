@@ -7,15 +7,20 @@ from uuid import UUID
 import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from livekit import api
-from integrations import install
+from integrations import install, drive_configured, MAX_UPLOAD
+from admin_features import install as install_admin, firebase_config
 
-ROOT = Path(__file__).resolve().parent
-load_dotenv(ROOT / '.env')
+import sys
+ROOT = Path(sys._MEIPASS) if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent
+# Quando empacotado, o .env fica ao lado do executável
+if getattr(sys, 'frozen', False):
+    load_dotenv(Path(sys.executable).parent / '.env')
+else:
+    load_dotenv(ROOT / '.env')
 app = FastAPI(title='Órbita', docs_url=None, redoc_url=None)
 bearer = HTTPBearer(auto_error=False)
 
@@ -26,52 +31,15 @@ def settings():
         'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET')}
 
 
-app.add_middleware(GZipMiddleware, minimum_size=1024)
-
-
-def csp(s):
-    """Política de segurança de conteúdo. Enviada em modo de observação (Report-Only)
-    para não quebrar a interface; depois de testar, troque o nome do cabeçalho."""
-    livekit = s['LIVEKIT_URL'].replace('wss://', 'https://').replace('ws://', 'http://')
-    livekit_ws = s['LIVEKIT_URL'] or 'wss://*.livekit.cloud'
-    supabase = s['SUPABASE_URL'] or 'https://*.supabase.co'
-    supabase_ws = supabase.replace('https://', 'wss://').replace('http://', 'ws://')
-    return '; '.join([
-        "default-src 'self'",
-        "script-src 'self' https://cdn.jsdelivr.net",
-        "style-src 'self' 'unsafe-inline'",
-        f"img-src 'self' data: blob: {supabase}",
-        f"media-src 'self' blob: {supabase}",
-        f"connect-src 'self' https://cdn.jsdelivr.net {supabase} {supabase_ws} {livekit} {livekit_ws}",
-        "worker-src 'self' blob:",
-        "frame-ancestors 'none'",
-        "base-uri 'self'",
-        "object-src 'none'",
-    ])
-
-
 @app.middleware('http')
 async def headers(request, call_next):
     response = await call_next(request)
     response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['X-Frame-Options'] = 'DENY'
     response.headers['Referrer-Policy'] = 'same-origin'
     response.headers['Permissions-Policy'] = 'camera=(self), microphone=(self), display-capture=(self)'
-    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-    response.headers['Content-Security-Policy-Report-Only'] = csp(settings())
-    path = request.url.path
-    if path.startswith('/api/'):
+    if request.url.path.startswith('/api/'):
         response.headers['Cache-Control'] = 'no-store'
-    elif path.startswith('/static/') and 'Cache-Control' not in response.headers:
-        # Os arquivos usam ?v=... na URL, então o cache do navegador é seguro.
-        response.headers['Cache-Control'] = 'public, max-age=3600'
     return response
-
-
-@app.get('/healthz')
-def healthz():
-    """Verificação de saúde para o Render e para monitoramento gratuito (UptimeRobot)."""
-    return {'status': 'ok'}
 
 
 @app.get('/api/config')
@@ -81,7 +49,8 @@ def config():
     return {'supabaseUrl': s['SUPABASE_URL'],
             'supabaseKey': s['SUPABASE_PUBLISHABLE_KEY'],
             'configured': ready,
-            'storageConfigured': True, 'uploadLimit': 26214400,
+            'firebaseConfig': firebase_config(),
+            'driveConfigured': drive_configured(), 'uploadLimit': MAX_UPLOAD,
             'callsConfigured': all(s[k] for k in ('LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'))}
 
 
@@ -147,5 +116,6 @@ def index():
 
 
 install(app, current_user, settings, make_token)
+install_admin(app, current_user, settings)
 
 app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')
