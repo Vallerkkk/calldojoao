@@ -305,4 +305,3 @@ do $$ declare t text; begin
 end $$;
 
 commit;
-
