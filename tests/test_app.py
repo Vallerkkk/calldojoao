@@ -42,6 +42,17 @@ class AppTests(unittest.TestCase):
         self.assertNotIn(ENV['LIVEKIT_API_KEY'], result.text)
         self.assertEqual(result.headers['cache-control'], 'no-store')
 
+    def test_healthcheck_is_public(self):
+        result = self.client.get('/healthz')
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json(), {'status': 'ok'})
+
+    def test_security_headers_are_present(self):
+        result = self.client.get('/healthz')
+        self.assertEqual(result.headers['x-frame-options'], 'DENY')
+        self.assertIn('frame-ancestors', result.headers['content-security-policy-report-only'])
+        self.assertNotIn(ENV['LIVEKIT_API_SECRET'], str(result.headers))
+
     def test_anonymous_cannot_join(self):
         self.assertEqual(self.client.post(f'/api/channels/{CHANNEL}/join').status_code, 401)
 
