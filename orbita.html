@@ -6,14 +6,14 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://psreyaufhrquixfjzuek.supabase.co" crossorigin>
 <title>Órbita — Comunidade, Chat & Voz em Tempo Real</title>
-<link rel="stylesheet" href="/static/style.css?v=videochamada-20261020-1">
+<link rel="stylesheet" href="/static/style.css?v=launcher-20261020-1">
 <meta name="theme-color" content="#10101b">
 <link rel="manifest" href="/static/manifest.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/static/icons/icon.svg">
 <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-<link rel="stylesheet" href="/static/enhancements.css?v=videochamada-20261020-1">
-<link rel="stylesheet" href="/static/interface.css?v=videochamada-20261020-1">
-<link rel="stylesheet" href="/static/fluency.css?v=videochamada-20261020-1">
+<link rel="stylesheet" href="/static/enhancements.css?v=launcher-20261020-1">
+<link rel="stylesheet" href="/static/interface.css?v=launcher-20261020-1">
+<link rel="stylesheet" href="/static/fluency.css?v=launcher-20261020-1">
 </head>
 <body>
 
@@ -22,7 +22,7 @@
   <div class="auth-card"><p class="eyebrow">BEM-VINDO À SUA COMUNIDADE</p><h2 id="auth-title">Bom ter você aqui.</h2><p id="auth-description" class="muted">Entre para encontrar a sua galera.</p>
   <div id="setup" class="notice" hidden>O site está pronto para configurar. Preencha o arquivo <code>.env</code> e execute <code>supabase.sql</code> no Supabase. Consulte o README da pasta.</div>
   <form id="auth-form"><label id="name-label" hidden>Como devemos chamar você?<input id="display-name" maxlength="50" autocomplete="nickname" placeholder="Seu nome"></label><label>E-mail<input id="email" type="email" autocomplete="email" required placeholder="voce@exemplo.com"></label><label>Senha<input id="password" type="password" minlength="8" autocomplete="current-password" required placeholder="Pelo menos 8 caracteres"></label><button id="auth-submit" class="primary" type="submit">Entrar na Órbita <span>↗</span></button></form>
-  <p id="auth-status" role="status" class="muted"></p><button id="toggle-auth" class="text-button">Ainda não tem conta? Cadastre-se</button><p class="fine">Microfone e câmera só são ativados com a sua permissão.</p></div>
+  <p id="auth-status" role="status" class="muted"></p><button id="toggle-auth" class="text-button">Ainda não tem conta? Cadastre-se</button><p class="fine">Microfone e câmera só são ativados com a sua permissão.</p><a class="auth-install-link" href="/instalar" target="_blank" rel="noopener noreferrer">↓ Baixar / instalar Órbita</a></div>
 </section>
 
 <div class="app" id="app-view" hidden>
@@ -57,6 +57,7 @@
         <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor"/>
       </svg>
     </button>
+    <a id="install-nav" class="server-icon action-rail rail-install-link" href="/instalar" target="_blank" rel="noopener noreferrer" title="Baixar ou instalar Órbita" aria-label="Baixar ou instalar Órbita"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 17v4h14v-4"/></svg></a>
   </nav>
 
   <!-- ============================================================
@@ -465,4 +466,4 @@
 <button id="back-to-call-dock" hidden>Voltar à chamada</button>
 <div id="incoming-call" class="incoming-call" hidden><strong id="incoming-name"></strong><button id="answer-call" class="primary">Atender</button><button id="decline-call" class="danger">Recusar</button></div>
 <dialog id="app-dialog" aria-labelledby="dialog-title"><div class="dialog-header"><h2 id="dialog-title"></h2><button id="dialog-close" aria-label="Fechar">×</button></div><div id="dialog-content"></div></dialog>
-<script type="module" src="/static/app.js?v=videochamada-20261020-1"></script><div id="creators-credit" class="creators-credit"></div></body></html>
+<script type="module" src="/static/app.js?v=launcher-20261020-1"></script><div id="creators-credit" class="creators-credit"></div></body></html>

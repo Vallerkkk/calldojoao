@@ -156,6 +156,17 @@ def index():
     return FileResponse(ROOT / 'static' / 'index.html')
 
 
+@app.get('/instalar')
+def install_page():
+    return FileResponse(ROOT / 'static' / 'install.html', headers={'Cache-Control':'no-store'})
+
+
+@app.get('/baixar/Orbita-Windows.zip')
+def download_launcher():
+    return FileResponse(ROOT / 'static' / 'downloads' / 'Orbita-Windows.zip',
+        filename='Orbita-Windows.zip', media_type='application/zip', headers={'Cache-Control':'no-store'})
+
+
 install(app, current_user, settings, make_token)
 install_features(app, current_user, settings)
 

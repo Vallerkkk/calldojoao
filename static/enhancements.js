@@ -1,13 +1,14 @@
 import { relativeTime, safeLink, stickerNames, youtubeId } from './media-utils.js?v=fluency-20261020-2';
 import { reserveImage, focusElement } from './dom-utils.js?v=fluency-20261020-2';
 import { requestWithDeadline } from './chat-state.js?v=fluency-20261020-2';
+import { requestAppInstall } from './app-install.js?v=launcher-20261020-1';
 
 export function initEnhancements(context) {
   const { el, button, toast, checked, showDialog, inputField } = context;
   const $ = id => document.getElementById(id), state = context.state;
   const jsonPost = async (path, body = {}) => (await context.apiFetch(path, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) })).json();
   let sessionVersion=0,channelVersion=0,threadReadVersion=0,installTask;
-  let inbox, typing, subscribedUser, typingTimer, idle = false, idleTimer, lastTyped = 0, registration, installPrompt;
+  let inbox, typing, subscribedUser, typingTimer, idle = false, idleTimer, lastTyped = 0, registration;
   let unread = {}, panel, panelKind, threadRoot, threadTarget, threadVersion = 0, threadCursor, threadMore;
   let wakeLock, wakeRequest = false, watchRoom, watchEvents, audioContext, watchState, player, playerReady = false, playerTask, suppressPlayer = false, focusedLink;
   let lastSound = new Map(), youtubePromise, searchTimer, searchVersion = 0, historyObserver, remoteSearch = false;
@@ -63,11 +64,16 @@ export function initEnhancements(context) {
     return installTask;
   }
   installPWA();
-  window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); installPrompt = event; });
   async function installApp() {
-    if (matchMedia('(display-mode:standalone)').matches) return toast('A Órbita já está aberta como aplicativo.');
-    if (installPrompt) { const prompt = installPrompt; installPrompt = null; await prompt.prompt(); return; }
-    toast('No menu do navegador, escolha “Instalar aplicativo” ou “Adicionar à tela inicial”. No iPhone, use Compartilhar → Adicionar à Tela de Início.');
+    const result = await requestAppInstall();
+    if(result==='installed')return toast('A Órbita já está aberta como aplicativo.');
+    if(result==='accepted')return toast('Solicitação aceita. Aguarde a confirmação do navegador.');
+    if(result==='dismissed')return toast('Você pode instalar depois pelo menu do navegador.');
+    if(result==='busy')return;
+    showDialog('Instalar Órbita',box=>{
+      box.append(el('p','','Instale pelo Edge, Chrome ou outro navegador compatível para abrir a Órbita pelo ícone do aplicativo. No iPhone, use Compartilhar → Adicionar à Tela de Início.'));
+      const link=el('a','primary','Abrir página de instalação ↗');link.href='/instalar';link.target='_blank';link.rel='noopener noreferrer';box.append(link);
+    });
   }
   async function enableNotifications() {
     if (!state().session) return toast('Entre na sua conta primeiro.');
