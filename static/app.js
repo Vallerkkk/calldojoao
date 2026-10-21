@@ -1,3 +1,4 @@
+import { initCommunityUX } from './community-ux.js?v=community-20261021-1';
 import { initCallLayout } from './call-layout.js?v=jesus9-20261021-1';
 import { initSocialFeed } from './social-feed.js?v=jesus9-20261021-1';
 import { compressImage, relativeTime, safeLink, stickerNames } from './media-utils.js?v=fluency-20261020-2';
@@ -6,7 +7,7 @@ import { DraftStore, serialToggle } from './runtime-utils.js?v=fluency-20261020-
 import { ConversationCache, MessageOutbox, conversationKey, requestWithDeadline } from './chat-state.js?v=fluency-20261020-2';
 import { reconcileNodes, reserveImage, focusElement } from './dom-utils.js?v=fluency-20261020-2';
 import { choosePrivateCall } from './private-call-menu.js?v=videochamada-20261020-1';
-let enhancements, feed, callLayout;
+let enhancements, feed, callLayout, communityUX;
 const drafts = new DraftStore(), pendingSends = new Set();
 const draftKey = target => session && target ? session.user.id + ':' + (target.private ? 'dm:' : 'channel:') + target.id : '';
 function saveComposerDraft() { if (!home && selected?.kind === 'text') drafts.set(draftKey(selected), $('message-input').value); }
@@ -318,13 +319,14 @@ async function validateCachedMessages(version,target){
   }catch(error){if(version===generation&&error.name!=='AbortError'){historyError='Parte do histórico não pôde ser conferida. Tente novamente.';renderMessages();}}finally{if(version===generation)cacheValidating=false;}
 }
 // Reuse unchanged rows so live updates preserve images, focus and open controls.
-const messageRows=new Map();
+const messageRows=new Map(),dayDividers=new Map();
 let renderedScope='',rowStyleKey='',rowStyleRevision=0;
 function createMessageRow(message,grouped=false) {
     const messageProfile=peopleById.get(message.author_id)||message.profiles||{},name = messageProfile.display_name || 'Participante';
     const item = el('article', 'message'), content = el('div', 'message-content'), meta = el('div', 'message-meta');
+    item.dataset.shortTime=new Date(message.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     const time = el('time', '', relativeTime(message.created_at));
-    time.dateTime = message.created_at;time.title=new Date(message.created_at).toLocaleString('pt-BR');const messageName=el('strong','',name),messageRoles=memberRoles.filter(r=>r.user_id===message.author_id).map(r=>communityRoleList.find(role=>role.id===r.role_id)).filter(Boolean).sort((a,b)=>b.position-a.position);if(messageRoles[0]){messageName.style.color=messageRoles[0].color;messageName.append(el('span','role-badge',messageRoles[0].name));}meta.append(messageName,time);
+    time.dateTime = message.created_at;time.title=new Date(message.created_at).toLocaleString('pt-BR');const messageName=el('strong','',name),messageRoles=memberRoles.filter(r=>r.user_id===message.author_id).map(r=>communityRoleList.find(role=>role.id===r.role_id)).filter(Boolean).sort((a,b)=>b.position-a.position);if(messageRoles[0]){messageName.style.color=messageRoles[0].color;messageName.append(el('span','role-badge',messageRoles[0].name));}meta.append(messageName,time);messageName.tabIndex=0;messageName.setAttribute('role','button');messageName.setAttribute('aria-label','Abrir perfil de '+name);messageName.onclick=()=>showProfile(person(message.author_id));messageName.onkeydown=e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();messageName.click();}};
     if(message.pinned)meta.append(el('small','pin-label','◆ Fixada'));
     content.append(meta);
     if(message.reply_to){const original=messages.get(message.reply_to);content.append(el('div','reply-card',original?(original.profiles?.display_name||'Participante')+': '+original.content.slice(0,150):'↪ Resposta a uma mensagem anterior'));}
@@ -341,12 +343,12 @@ function createMessageRow(message,grouped=false) {
     menu.append(trigger,actions);content.append(menu);
     const used=[...new Set((message.reactions||[]).map(r=>r.emoji))];
     if(used.length){const reactions=el('div','message-reactions');for(const emoji of used){const count=message.reactions.filter(r=>r.emoji===emoji).length,reactButton=button(emoji+' '+count,()=>react(message,emoji),'reaction');reactButton.classList.toggle('mine',message.reactions.some(r=>r.emoji===emoji&&r.user_id===session.user.id));if(communityEmojiUrls.has(emoji)){const icon=el('img','inline-custom-emoji');icon.src=communityEmojiUrls.get(emoji);icon.alt=emoji;reactButton.replaceChildren(icon,document.createTextNode(' '+count));}reactions.append(reactButton);}content.append(reactions);}
-    const avatar=el('div','avatar');setAvatar(avatar,messageProfile);
+    const avatar=el('div','avatar');setAvatar(avatar,messageProfile);avatar.tabIndex=0;avatar.setAttribute('role','button');avatar.setAttribute('aria-label','Abrir perfil de '+name);avatar.onclick=()=>showProfile(person(message.author_id));avatar.onkeydown=e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();avatar.click();}};
     item.append(avatar,content);enhancements?.enhanceMessage(item,message);item.classList.toggle('message-grouped',grouped);return item;
 }
 function renderMessages(scroll = false, position) {
   const list=$('message-list'),saved=position||lastViewport||capturePosition(),scope=(selected?.private?'dm:':'channel:')+selected?.id;
-  if(renderedScope!==scope){messageRows.clear();list.replaceChildren();renderedScope=scope;}
+  if(renderedScope!==scope){messageRows.clear();dayDividers.clear();list.replaceChildren();renderedScope=scope;}
   const nodes=[];list.classList.toggle('history-long',messages.size>200);list.setAttribute('aria-busy',String(loading||initialHistory));
   const welcome=list.querySelector('.welcome')||el('div','welcome');
   if(!welcome.childNodes.length){welcome.append(el('div','welcome-icon','#'),el('h1','',(selected.private?'Sua conversa com ':'Bem-vindo a #')+selected.name),el('p','',selected.private?'Mensagens e chamadas visíveis apenas para vocês dois.':'Um espaço para conversar, compartilhar e estar junto.'));}
@@ -357,7 +359,9 @@ function renderMessages(scroll = false, position) {
   const shared=JSON.stringify([memberRoles,communityRoleList,communityEmojiList,[...communityEmojiUrls],session.user.id,hasCommunityPermission('manage_messages')]),keep=new Set();
   if(shared!==rowStyleKey){rowStyleKey=shared;rowStyleRevision++;}
   let previous;
+  const usedDays=new Set(),now=new Date(),yesterday=new Date();yesterday.setDate(now.getDate()-1);let lastDay;
   for(const message of sorted){
+    const day=new Date(message.created_at).toDateString();if(day!==lastDay){let divider=dayDividers.get(day);if(!divider){divider=el('div','ux-day-divider');divider.setAttribute('role','separator');dayDividers.set(day,divider);}const label=day===now.toDateString()?'Hoje':day===yesterday.toDateString()?'Ontem':new Date(message.created_at).toLocaleDateString('pt-BR',{day:'numeric',month:'long',year:'numeric'});if(divider.textContent!==label)divider.textContent=label;divider.setAttribute('aria-label',label);nodes.push(divider);usedDays.add(day);lastDay=day;}
     const grouped=!!previous&&previous.author_id===message.author_id&&!message.reply_to&&!message.pinned&&new Date(message.created_at)-new Date(previous.created_at)<300000&&new Date(message.created_at).toDateString()===new Date(previous.created_at).toDateString();
     const quoted=message.reply_to?messages.get(message.reply_to):null;
     const author=peopleById.get(message.author_id)||message.profiles||{};const mentions=[...message.content.matchAll(/@([A-Za-z0-9_]{3,24})/g)].map(match=>peopleByUsername.get(match[1].toLowerCase())?.id||'');
@@ -367,6 +371,7 @@ function renderMessages(scroll = false, position) {
     nodes.push(cached.node);keep.add(message.id);previous=message;
   }
   for(const id of messageRows.keys())if(!keep.has(id))messageRows.delete(id);
+  for(const key of dayDividers.keys())if(!usedDays.has(key))dayDividers.delete(key);
   reconcileNodes(list,nodes);restorePosition(scroll?{atBottom:true}:saved);
 }
 $('message-input').onkeydown = event => {
@@ -1759,3 +1764,15 @@ document.addEventListener('keydown', e => {
 
 const settingsBeforeBigPicture=$('settings').onclick;
 $('settings').onclick=function(event){settingsBeforeBigPicture.call(this,event);const box=$('dialog-content').querySelector('.dialog-body');if(!box)return;box.append(el('p','muted','A redução de ruído, o cancelamento de eco e o ganho automático são aplicados pelos controles de Áudio acima. A intensidade é ajustada pelo navegador e pelo dispositivo.'),button('Alternar Big Picture (Alt+Enter)',()=>{$('app-dialog').close();toggleBigPicture();}));};
+
+communityUX=initCommunityUX({
+ state:()=>({session,selected,channels,activeCommunity,room,home}),invite:()=>showCommunityInvite(),communityName:()=>communities.find(c=>c.id===activeCommunity)?.name||'Seu servidor',el,button,dialog:showDialog,report:error=>toast(errorText(error)),
+ select:channel=>selectChannel(channel),edit:message=>messageAction(message,'edit'),
+ lastOwnMessage:()=>[...messages.values()].filter(m=>m.author_id===session?.user.id&&!m.thread_root).sort((a,b)=>b.created_at.localeCompare(a.created_at))[0],
+ targets:()=>{if(!session)return [];const entries=[];for(const c of channels)entries.push({key:'channel:'+c.id,name:c.name,description:(c.kind==='voice'?'Sala de voz':'Canal de texto')+' · '+(communities.find(x=>x.id===c.community_id)?.name||'Servidor'),symbol:c.kind==='voice'?'◖':'#',open:()=>selectChannel(c)});for(const c of communities)entries.push({key:'server:'+c.id,name:c.name,description:'Servidor',symbol:'◎',open:()=>openCommunity(c)});const peers=new Set();for(const c of conversations){const p=person(otherUser(c));peers.add(p.id);entries.push({key:'dm:'+c.id,name:p.display_name,description:'Conversa · @'+p.username,symbol:'@',open:()=>openConversation(c)});}for(const f of friendships.filter(f=>f.status==='accepted')){const id=f.requester_id===session.user.id?f.recipient_id:f.requester_id;if(peers.has(id))continue;const p=person(id);entries.push({key:'friend:'+id,name:p.display_name,description:'Amigo · @'+p.username,symbol:'@',open:()=>startConversation(p)});}return entries;}
+});
+const renderMessagesBeforeUX=renderMessages;renderMessages=(...args)=>{renderMessagesBeforeUX(...args);communityUX.messages();};
+const renderChannelsBeforeUX=renderChannels;renderChannels=()=>{renderChannelsBeforeUX();communityUX.channels();};
+const selectBeforeUX=selectChannel;selectChannel=async channel=>{await selectBeforeUX(channel);communityUX.update();};
+const friendsBeforeUX=showFriends;showFriends=()=>{friendsBeforeUX();communityUX.update();};
+communityUX.update();

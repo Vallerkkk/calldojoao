@@ -70,3 +70,14 @@ A barra inferior reúne microfone, câmera, transmissão, reação, efeitos sono
 O canto inferior direito oferece vídeo flutuante e tela cheia da chamada; cada vídeo também tem esses atalhos. O menu superior abre canais e conversas. O botão de conversa mantém a chamada conectada e o atalho “Voltar à chamada” permite retornar, inclusive no celular. Ouvir juntos com YouTube permanece no topo e em Mais opções.
 
 Validação: tests/call_layout_browser.cjs cobre a grade 2×2, ausência de quadros duplicados, nomes acessíveis, menus, microfone, câmera, transmissão, áudio da tela, ensurdecer, reações, efeitos, convites, tela cheia, encaminhamento ao Picture-in-Picture, navegação sem desconexão e limpeza. A suíte roda em tamanhos de PC e celular com usuários e dispositivos simulados. Os testes de ciclo de mídia, volumes/câmeras, YouTube e navegação continuam separados.
+
+
+## Navegação e chat da comunidade
+
+A busca rápida (Ctrl/Command+K ou Buscar canais e conversas na lateral) filtra canais, servidores, DMs e amigos já acessíveis à conta. As setas escolhem o destino e Enter abre; destinos recentes guardam somente identificadores locais, separados por conta. Categorias de canais podem ser recolhidas por servidor; o canal selecionado, chamadas conectadas e canais não lidos continuam disponíveis.
+
+O chat mostra separadores de dias, horários das mensagens agrupadas ao passar o mouse, perfis clicáveis e ações rápidas de responder/curtir no PC. Clique direito abre as mesmas ações autorizadas do menu original; seleção de texto e links mantêm o menu nativo. Excluir continua pedindo confirmação. Seta para cima no campo vazio abre a edição da última mensagem própria carregada. Alt+Seta muda de canal; Ctrl/Command+Shift+M alterna o microfone; Ctrl/Command+Shift+D alterna ensurdecer. A busca rápida oferece uma lista de atalhos.
+
+Cada vídeo pode ser destacado na chamada e devolvido à grade sem substituir a faixa de mídia. O destaque é local e termina se a transmissão sair. Os volumes independentes, câmera frontal/traseira, Picture-in-Picture, Big Picture, perfis, feed e controles existentes continuam disponíveis. O refinamento visual usa recursos do próprio navegador, sem novos serviços ou dependências.
+
+Validação: tests/community_ux_browser.cjs cobre PC e celular, busca/DMs/teclado, categorias, separadores, ações contextuais e suas permissões, confirmação de exclusão, envio pelo botão visível, atalhos de chamada, destaque/limpeza, tema claro e troca de conta. As suítes de navegação, feed, preferências e layout de chamadas verificam regressões com contas e mídia simuladas.
