@@ -652,7 +652,7 @@ for (const [id, property, method] of [['mic','isMicrophoneEnabled','setMicrophon
       else if(id==='mic'&&pushToTalk){toast('Segure o botão “Falar” ou a tecla Espaço para abrir o microfone.');}
       else if(deafened&&enabled)toast('Ative o áudio antes de abrir o microfone.');else await microphoneSwitch.set(room.localParticipant,enabled);
     }
-    catch (error) { if(id==='camera'&&!cameraWasEnabled&&room===target){await target.localParticipant.setCameraEnabled(false).catch(()=>{});toast('Não foi possível ativar a câmera escolhida. Selecione outra câmera e tente novamente.');}else toast(errorText(error)); }
+    catch (error) { if(id==='camera'&&!cameraWasEnabled&&room===target){await target.localParticipant.setCameraEnabled(false).catch(()=>{});toast(['OverconstrainedError','ConstraintNotSatisfiedError'].includes(error?.name)?'Não foi possível ativar a câmera escolhida. Selecione outra câmera e tente novamente.':errorText(error));}else toast(errorText(error)); }
     finally { if(operation&&cameraTask===operation)cameraTask=null;$(id).disabled = id==='screen'&&!canShareScreen;updateCallUI();syncLocalCameraPreview(); }
   };
 }
