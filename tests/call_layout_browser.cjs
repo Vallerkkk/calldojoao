@@ -37,6 +37,10 @@ let browser;
   await page.locator('#call-more').click();await page.getByRole('button',{name:'Qualidade da conexão',exact:true}).click();await page.getByRole('heading',{name:'Conexão da chamada',exact:true}).waitFor();await close();
   await page.locator('#call-invite').click();await page.getByRole('heading',{name:'Convidar pessoas',exact:true}).waitFor();await close();
   await page.locator(`.media-tile:not(.media-screen) .call-tile-menu`).click();assert.equal(await page.locator('#app-dialog input[type=range]').count(),2);await close();
+  await page.route('**/voice-action',route=>{const data=route.request().postDataJSON();assert.equal(data.member,OTHER);assert.equal(data.action,'mute');return route.fulfill({json:{ok:true}});});
+  await page.evaluate(()=>{window.__qaRoom.orbitaModerator=true;window.__qaRoom.orbitaStage=true;window.__qaRoom.emit('ConnectionQualityChanged');});await page.locator('.media-tile:not(.media-screen) .call-tile-menu').click();
+  for(const name of ['Silenciar','Desconectar','Orador','Plateia'])assert.equal(await page.locator('#app-dialog').getByRole('button',{name,exact:true}).isVisible(),true);
+  await page.locator('#app-dialog').getByRole('button',{name:'Silenciar',exact:true}).click();await page.getByRole('heading',{name:'Confirmar controle de voz',exact:true}).waitFor();const moderationRequest=page.waitForRequest('**/voice-action');await page.locator('#app-dialog').getByRole('button',{name:'Confirmar',exact:true}).click();await moderationRequest;await page.waitForFunction(()=>!document.querySelector('#app-dialog').open);
   if(!mobile){await page.locator('#call-fullscreen').click();await page.waitForFunction(()=>!!document.fullscreenElement);await page.locator('#call-fullscreen').click();await page.waitForFunction(()=>!document.fullscreenElement);
    await page.locator('.media-tile:not(.media-screen)').hover();await page.locator('.media-tile:not(.media-screen) .expand-video').first().click();await page.waitForFunction(()=>document.fullscreenElement?.classList.contains('media-tile'));await page.evaluate(()=>document.exitFullscreen());}
   // Instrument only the browser window API; verify the actual button dispatches the selected live video.
@@ -44,7 +48,7 @@ let browser;
   await page.locator('#call-navigation').click();assert.equal(await page.locator('.sidebar').isVisible(),true);await page.locator(`[data-channel-id="${VOICE}"]`).first().click();
   await page.locator('#back-to-call').click();await page.locator('#text-view').waitFor();assert.equal(await page.evaluate(()=>window.__qaRoom.state),'connected');assert.equal(await page.evaluate(()=>document.body.classList.contains('call-focus')),false);await page.locator('#back-to-call-dock').click();await page.locator('#voice-view').waitFor();
   await page.locator('#leave-call').click();assert.equal(await page.locator('.media-tile').count(),0);assert.equal(await page.locator('.call-footer').isVisible(),false);assert.deepEqual(errors,[]);
-  report.push({mobile,unifiedFourTiles:true,controls:true,volumeMenu:true,screenAudio:true,reaction:true,soundboard:true,invite:true,fullscreen:!mobile,pipDispatch:true,chatKeepsCall:true,cleanup:true});await context.close();
+  report.push({mobile,unifiedFourTiles:true,controls:true,volumeMenu:true,moderationWithCamera:true,screenAudio:true,reaction:true,soundboard:true,invite:true,fullscreen:!mobile,pipDispatch:true,chatKeepsCall:true,cleanup:true});await context.close();
  }
  console.log(JSON.stringify(report));await browser.close();
 })().catch(async error=>{console.error(error);await browser?.close();process.exitCode=1;});
