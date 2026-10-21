@@ -1709,7 +1709,11 @@ svg { display: block; flex-shrink: 0; }
 }
 .tile.speaking {
   border-color: var(--online);
-  box-shadow: 0 0 0 2px rgba(35,165,90,0.28), 0 0 24px rgba(35,165,90,0.15);
+  box-shadow: 0 0 0 2px rgba(59,165,92,0.45), 0 0 28px rgba(59,165,92,0.22);
+  transition: border-color .25s ease, box-shadow .35s ease, transform .2s ease;
+}
+.tile.speaking .tile-avatar {
+  box-shadow: 0 0 0 3px rgba(59,165,92,0.6);
 }
 .tile.cam-on {
   background: linear-gradient(135deg, #1b1734 0%, #112438 50%, #1a1228 100%);
@@ -2475,3 +2479,68 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .media-frame{position:relative;min-height:150px;background:var(--bg-elevated);display:grid;place-items:center}.media-frame video{grid-area:1/1;min-height:150px}.video-status{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:var(--text-dim);background:var(--bg-elevated);font-size:13px;line-height:1.5}.media-loading video{visibility:hidden}.media-tile:fullscreen .media-frame{flex:1;min-height:0;width:100%}
 
 @media(max-width:780px){body:has(#call-dock:not([hidden])) #drive-info{bottom:calc(84px + env(safe-area-inset-bottom))}}
+
+
+/* Larger camera controls when active */
+body.camera-active .voice-controls .vc-btn,
+body.camera-active #voice-view .call-icon {
+  min-width: 48px;
+  min-height: 48px;
+  width: 48px;
+  height: 48px;
+}
+body.camera-active #camera-switch {
+  font-size: 13px;
+  padding: 0 10px;
+  min-width: 88px;
+}
+
+/* Members panel hide */
+body.members-hidden #members-sidebar {
+  display: none !important;
+}
+body.members-hidden .main {
+  /* chat expands */
+}
+@media (max-width: 1080px) {
+  body:not(.members-open) #members-sidebar { display: none; }
+}
+
+/* Profile name fonts & effects */
+.name-font-inter { font-family: 'Inter', system-ui, sans-serif; }
+.name-font-mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+.name-font-serif { font-family: 'Georgia', 'Times New Roman', serif; }
+.name-font-display { font-family: 'Outfit', 'Poppins', sans-serif; font-weight: 700; }
+
+.name-effect-glow { text-shadow: 0 0 8px var(--accent), 0 0 16px var(--accent-glow); }
+.name-effect-shimmer {
+  background: linear-gradient(90deg, #fff 0%, #a78bfa 40%, #fff 60%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 2.5s linear infinite;
+}
+.name-effect-rainbow {
+  background: linear-gradient(90deg, #f43f5e, #f97316, #eab308, #22c55e, #3b82f6, #a855f7);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: rainbow 3s linear infinite;
+}
+@keyframes shimmer { to { background-position: 200% center; } }
+@keyframes rainbow { to { background-position: 200% center; } }
+
+/* Profile banner */
+.profile-banner {
+  height: 120px;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(135deg, var(--accent), #1e1b4b);
+  margin: -16px -16px 12px;
+}
+
+/* Settings dialog sections */
+dialog h3 { font-size: 14px; margin: 18px 0 6px; color: var(--text); }
+dialog .check-field { margin: 8px 0; }
+
+.profile-color-preview{min-height:100px;border-radius:12px;padding:24px;color:#fff;text-shadow:0 1px 5px #0009;background:#7c5cff;margin-bottom:16px}
+@media(prefers-reduced-motion:reduce){.name-effect-shimmer,.name-effect-rainbow{animation:none!important}}

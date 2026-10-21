@@ -18,8 +18,12 @@ body.call-focus.mobile-menu-open .sidebar{display:flex!important;position:fixed;
 #voice-view .participant{display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 20%,#81708a70,transparent 90%),#493d55}
 #voice-view .participant:nth-child(even){background:linear-gradient(150deg,#816e8f,#4f3e64)}
 #voice-view .participant .avatar{width:80px;height:80px;min-width:80px;font-size:26px;border-radius:50%;border:0;background-size:cover;background-position:center;box-shadow:0 3px 12px #0003}
-#voice-view .participant.speaking,#voice-view .media-tile.speaking{border-color:#3ba55c}
-#voice-view .participant.speaking .avatar{box-shadow:0 0 0 3px #3ba55c}
+#voice-view .participant.speaking,#voice-view .media-tile.speaking{
+  border-color:#3ba55c;
+  box-shadow:0 0 0 2px rgba(59,165,92,.4), 0 0 20px rgba(59,165,92,.18);
+  transition:border-color .25s ease, box-shadow .35s ease;
+}
+#voice-view .participant.speaking .avatar{box-shadow:0 0 0 3px rgba(59,165,92,.7); transition:box-shadow .3s ease;}
 #voice-view .participant-name,#voice-view .media-tile figcaption>span:first-child{position:absolute;left:10px;bottom:10px;max-width:calc(100% - 65px);padding:6px 9px;background:#171719b8;border-radius:5px;font-size:13px;line-height:20px;color:#fff;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:2}
 #voice-view .participant-status{position:absolute;left:10px;top:10px;font-size:11px;color:#ddd;background:#16161a70;border-radius:4px;padding:4px 7px;opacity:0}
 #voice-view .participant:hover .participant-status,#voice-view .participant:focus-within .participant-status{opacity:1}
@@ -73,3 +77,6 @@ body.call-focus.mobile-menu-open .sidebar{display:flex!important;position:fixed;
 @media(max-width:800px){#voice-view .call-live{right:58px}}
 #back-to-call-dock{position:relative;order:-1;flex-shrink:0;width:100%;min-height:44px;padding:10px 16px;border:0;border-bottom:1px solid #3ba55c;border-radius:0;background:#183a29;color:#fff;font-size:12px;cursor:pointer}
 #voice-view .call-grid{max-width:var(--call-max-width,1440px)}
+
+body.camera-active #voice-view .voice-controls .vc-btn{min-width:48px;min-height:48px;width:48px;height:48px}
+body.camera-active #voice-view #camera-switch{min-width:88px;width:auto;padding-inline:10px;font-size:12px}

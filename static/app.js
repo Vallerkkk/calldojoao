@@ -661,9 +661,27 @@ const facingField=el('label','camera-facing-control'),facingSelect=el('select');
 for(const [value,name]of [['user','Frontal'],['environment','Traseira']]){const option=el('option','',name);option.value=value;facingSelect.append(option);}
 facingField.append(el('span','','Câmera'),facingSelect);$('camera').after(facingField);
 function updateCameraControl(){
-  facingField.hidden=!mobileCamera();facingSelect.disabled=!room||room.localParticipant.permissions?.canPublish===false||!!cameraTask;facingSelect.value=cameraFacing;
+  const mobile = mobileCamera();
+  facingField.hidden = !mobile;
+  const camOn = room?.localParticipant?.isCameraEnabled;
+  const switchBtn = $('camera-switch');
+  if (switchBtn) {
+    switchBtn.hidden = !mobile || !camOn;
+    switchBtn.disabled = !room || room.localParticipant.permissions?.canPublish===false || !!cameraTask;
+    switchBtn.setAttribute('aria-label',cameraFacing === 'user' ? 'Trocar para câmera traseira' : 'Trocar para câmera frontal');
+    switchBtn.title = cameraFacing === 'user' ? 'Trocar para câmera traseira' : 'Trocar para câmera frontal';
+    switchBtn.textContent = cameraFacing === 'user' ? '🔄 Traseira' : '🔄 Frontal';
+  }
+  facingSelect.disabled=!room||room.localParticipant.permissions?.canPublish===false||!!cameraTask;facingSelect.value=cameraFacing;
   if(cameraTask)$('camera').disabled=true;syncLocalCameraPreview();
+  // Larger controls when camera is on
+  document.body.classList.toggle('camera-active', !!camOn);
 }
+$('camera-switch')?.addEventListener('click', () => {
+  const next = cameraFacing === 'user' ? 'environment' : 'user';
+  facingSelect.value = next;
+  facingSelect.dispatchEvent(new Event('change'));
+});
 facingSelect.onchange=async()=>{
   const next=facingSelect.value,previous=cameraFacing,target=room;if(!target||cameraTask||target.localParticipant.permissions?.canPublish===false){updateCameraControl();return;}
   const publication=[...target.localParticipant.videoTrackPublications.values()].find(p=>(p.source||p.track?.source)==='camera'),track=publication?.track;
@@ -707,8 +725,16 @@ let profile, people = [], friendships = [], conversations = [], socialSubscripti
 let publicVoicePresence=[],lastPresenceSignature='',online = new Set(), home = false, pinsOnly = false;
 let communityRoleList=[],memberRoles=[],communityMemberList=[],communityEmojiList=[];
 let communityEmojiUrls=new Map();
-let noise = localStorage.getItem('orbita-noise') !== 'false', deafened = false;
-const audioCapture = () => ({noiseSuppression:noise, echoCancellation:true, autoGainControl:true, channelCount:1});
+let noise = localStorage.getItem('orbita-noise') !== 'false';
+let echoCancellation = localStorage.getItem('orbita-echo') !== 'false';
+let autoGainControl = localStorage.getItem('orbita-agc') !== 'false';
+let deafened = false;
+const audioCapture = () => ({
+  noiseSuppression: noise,
+  echoCancellation: echoCancellation,
+  autoGainControl: autoGainControl,
+  channelCount: 1
+});
 const scopeKey = target => target?.private ? 'conversation_id' : 'channel_id';
 const messageTable = () => selected?.private ? 'direct_messages' : 'messages';
 const messageFields = '*,profiles!author_id(display_name,username,avatar_color,avatar_url),attachments(id,owner_id,storage_path,file_id,name,mime_type,size),reactions(id,emoji,user_id),poll_votes(id,user_id,option_index)';
@@ -856,6 +882,7 @@ async function removeFriend(f){
 }
 function showProfile(p) {
   showDialog(p.display_name,container=>{
+    if(p.id===session?.user.id&&!p.banner_src&&/^#[0-9a-f]{6}$/i.test(loadProfilePrefs().bannerColor||'')){const cover=el('div','profile-color-preview');cover.style.backgroundColor=loadProfilePrefs().bannerColor;container.append(cover);}
     if(p.banner_src){const banner=el('img','profile-banner');banner.src=p.banner_src;banner.alt='Banner de '+p.display_name;reserveImage(banner,480,160);container.append(banner);}
     const avatar=el('div','profile-avatar');setAvatar(avatar,p);container.append(avatar,el('p','muted','@'+p.username+(p.pronouns?' · '+p.pronouns:'')),el('p','',p.bio||'Ainda sem biografia.'));
     if(p.custom_status)container.append(el('p','profile-status',p.custom_status));if(p.presence_activity)container.append(el('p','muted',p.presence_activity));
@@ -903,7 +930,13 @@ $('friends-nav').onclick=showFriends;
 $('settings').onclick=()=>showDialog('Seu perfil e áudio',container=>{
   const form=el('form');const name=inputField(form,'Nome de exibição',profile.display_name,50),username=inputField(form,'Nome de usuário (3–24 letras, números ou _)',profile.username,24),bio=inputField(form,'Sobre você',profile.bio,160),pronouns=inputField(form,'Pronomes',profile.pronouns,32),activity=inputField(form,'Atividade (ex.: Jogando Minecraft / Ouvindo música)',profile.presence_activity,80),color=inputField(form,'Cor do perfil',profile.avatar_color,7);color.type='color';
   const avatarFile=profileFileField(form,'Foto do perfil',profile.avatar_src),bannerFile=profileFileField(form,'Banner (pode ser GIF animado)',profile.banner_src);
-  const label=el('label','check-field');const check=el('input');check.type='checkbox';check.checked=noise;label.append(check,document.createTextNode('Supressão de ruído do microfone'));form.append(label,el('p','muted','O navegador reduz ruído, eco e variações de volume. O resultado depende do dispositivo.'));
+  form.append(el('h3','','Áudio'));
+  form.append(el('p','muted','Ajustes aplicados ao microfone. O navegador e o dispositivo podem limitar o efeito real.'));
+
+  const noiseLabel=el('label','check-field');const noiseCheck=el('input');noiseCheck.type='checkbox';noiseCheck.checked=noise;noiseLabel.append(noiseCheck,document.createTextNode('Supressão de ruído'));form.append(noiseLabel,el('p','muted','Reduz ruídos de fundo (teclado, ventilador, ambiente).'));
+  const echoLabel=el('label','check-field');const echoCheck=el('input');echoCheck.type='checkbox';echoCheck.checked=echoCancellation;echoLabel.append(echoCheck,document.createTextNode('Cancelamento de eco'));form.append(echoLabel,el('p','muted','Evita que o áudio dos alto-falantes volte pelo microfone.'));
+  const agcLabel=el('label','check-field');const agcCheck=el('input');agcCheck.type='checkbox';agcCheck.checked=autoGainControl;agcLabel.append(agcCheck,document.createTextNode('Controle automático de ganho'));form.append(agcLabel,el('p','muted','Mantém o volume da sua voz mais estável.'));
+
   const pttLabel=el('label','check-field'),ptt=el('input');ptt.type='checkbox';ptt.checked=pushToTalk;pttLabel.append(ptt,document.createTextNode('Pressionar Espaço ou Segurar para falar'));form.append(pttLabel,el('p','muted','Com esta opção ativa, o microfone fica fechado até você segurar o botão Falar ou a tecla Espaço na chamada.'));
   const save=el('button','primary','Salvar alterações');save.type='submit';form.append(save);container.append(form);
   form.onsubmit=async event=>{event.preventDefault();save.disabled=true;const uid=session.user.id,prior={...profile},created=[];let saved=false;try{
@@ -913,7 +946,9 @@ $('settings').onclick=()=>showDialog('Seu perfil e áudio',container=>{
     const updated=await checked(db.from('profiles').update({display_name:name.value.trim(),username:username.value.trim().toLowerCase(),bio:bio.value.trim(),pronouns:pronouns.value.trim(),presence_activity:activity.value.trim(),avatar_color:color.value,avatar_url:avatarUrl,banner_url:bannerUrl}).eq('id',uid).select('id'));
     if(!updated.length)throw Error('O perfil não pôde ser atualizado. Entre novamente.');saved=true;
     const retired=[prior.avatar_url,prior.banner_url].filter(path=>path?.startsWith('profiles/'+uid+'/')&&!new Set([avatarUrl,bannerUrl]).has(path));if(retired.length){const removed=await db.storage.from('orbita-files').remove([...new Set(retired)]);if(removed.error)toast('Perfil salvo. Não foi possível liberar o espaço das imagens antigas agora.');}
-    noise=check.checked;localStorage.setItem('orbita-noise',String(noise));
+    noise=noiseCheck.checked;localStorage.setItem('orbita-noise',String(noise));
+    echoCancellation=echoCheck.checked;localStorage.setItem('orbita-echo',String(echoCancellation));
+    autoGainControl=agcCheck.checked;localStorage.setItem('orbita-agc',String(autoGainControl));
     pushToTalk=ptt.checked;localStorage.setItem('orbita-push-to-talk',String(pushToTalk));
     if(room){for(const pub of room.localParticipant.audioTrackPublications.values())if(pub.track?.source==='microphone')await pub.track.restartTrack(audioCapture());talkHeld=false;if(pushToTalk||deafened)await microphoneSwitch.set(room.localParticipant,false);}
     await loadSocial();if(form.isConnected)$('app-dialog').close();toast('Perfil e áudio atualizados.');
@@ -1184,7 +1219,26 @@ $('dd-invite-btn').onclick=()=>copyInvitation().catch(e=>toast(errorText(e)));
 $('dm-quick-find').onclick=()=>showDialog('Busca rápida',container=>{const form=el('form'),input=inputField(form,'Canal ou @ de um amigo','',60),go=el('button','primary','Abrir');go.type='submit';form.append(go);container.append(form);form.onsubmit=async e=>{e.preventDefault();try{const text=input.value.trim().replace(/^[@#]/,'').toLowerCase(),ch=channels.find(c=>c.name.toLowerCase()===text),p=people.find(p=>p.username===text||p.display_name.toLowerCase()===text);if(ch){$('app-dialog').close();await selectChannel(ch);}else if(p){$('app-dialog').close();await startConversation(p);}else toast('Nenhum canal ou usuário encontrado.');}catch(error){toast(errorText(error));}};});
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('dm-quick-find').click();}});
 $('btn-search-toggle').onclick=()=>$('search-messages').focus();
-$('btn-members-toggle').onclick=()=>{document.body.classList.toggle(matchMedia('(max-width:1080px)').matches?'members-open':'members-hidden');$('btn-members-toggle').classList.toggle('active');};
+// Members panel toggle with persistence
+const MEMBERS_KEY = 'orbita-members-hidden';
+function applyMembersState() {
+  const saved = localStorage.getItem(MEMBERS_KEY);
+  const hidden = saved===null ? matchMedia('(max-width:1080px)').matches : saved==='true';
+  const mobile = matchMedia('(max-width:1080px)').matches;
+  document.body.classList.toggle('members-hidden', hidden && !mobile);
+  document.body.classList.toggle('members-open', !hidden && mobile);
+  $('btn-members-toggle').classList.toggle('active', !hidden);
+  $('btn-members-toggle').title = hidden ? 'Mostrar membros' : 'Ocultar membros';
+  $('btn-members-toggle').setAttribute('aria-expanded',String(!hidden));
+}
+applyMembersState();
+matchMedia('(max-width:1080px)').addEventListener('change',applyMembersState);
+$('btn-members-toggle').onclick = () => {
+  const currentlyHidden = document.body.classList.contains('members-hidden') || (matchMedia('(max-width:1080px)').matches && !document.body.classList.contains('members-open'));
+  const nextHidden = !currentlyHidden;
+  localStorage.setItem(MEMBERS_KEY, String(nextHidden));
+  applyMembersState();
+};
   $('mobile-menu-btn').onclick=()=>{const open=document.body.classList.toggle('mobile-menu-open');$('mobile-menu-btn').setAttribute('aria-expanded',String(open));};
 document.addEventListener('click',event=>{if(!document.body.classList.contains('mobile-menu-open'))return;const target=event.target;if(!(target instanceof Element)||!target.closest('.sidebar,.rail,#mobile-menu-btn,.mobile-nav-btn'))closeMobileMenu();});
 for(const view of ['friends-view','voice-view']){const target=$(view).querySelector('.chat-title');const menu=button('☰',()=>{const open=document.body.classList.toggle('mobile-menu-open');menu.setAttribute('aria-expanded',String(open));},'mobile-nav-btn');menu.setAttribute('aria-label','Menu de canais');menu.setAttribute('aria-expanded','false');target.prepend(menu);}
@@ -1369,3 +1423,114 @@ feed=initSocialFeed({
 });
 boot();
 
+
+// === Profile customization (Discord-like) ===
+const PROFILE_PREFS_KEY = 'orbita-profile-prefs';
+function loadProfilePrefs() {
+  try { return JSON.parse(localStorage.getItem(PROFILE_PREFS_KEY+':'+(session?.user.id||'guest')) || '{}') || {}; }
+  catch { return {}; }
+}
+function saveProfilePrefs(prefs) {
+  localStorage.setItem(PROFILE_PREFS_KEY+':'+(session?.user.id||'guest'), JSON.stringify(prefs));
+  applyProfileStyles();
+}
+function applyProfileStyles() {
+  const prefs = loadProfilePrefs();
+  document.querySelectorAll('.message-meta strong, .up-name, .participant-name, .member-name, .member strong').forEach(el => {
+    el.classList.remove('name-font-inter','name-font-mono','name-font-serif','name-font-display','name-effect-glow','name-effect-shimmer','name-effect-rainbow');
+    const card=el.closest('[data-user-id],[data-participant-id],[data-message-id]');
+    const owner=el.classList.contains('up-name') || card?.dataset.userId===session?.user.id || card?.dataset.participantId===session?.user.id || messages.get(card?.dataset.messageId)?.author_id===session?.user.id;
+    if(owner && ['inter','mono','serif','display'].includes(prefs.font)) el.classList.add('name-font-'+prefs.font);
+    if(owner && ['glow','shimmer','rainbow'].includes(prefs.effect)) el.classList.add('name-effect-'+prefs.effect);
+  });
+}
+function openProfileCustomizer() {
+  showDialog('Personalizar perfil', container => {
+    const prefs = loadProfilePrefs();
+    const font = el('select');
+    font.innerHTML = '<option value="">Padrão</option><option value="inter">Inter</option><option value="mono">Monospace</option><option value="serif">Serif</option><option value="display">Display</option>';
+    font.value = prefs.font || '';
+    const effect = el('select');
+    effect.innerHTML = '<option value="">Nenhum</option><option value="glow">Glow</option><option value="shimmer">Shimmer</option><option value="rainbow">Rainbow</option>';
+    effect.value = prefs.effect || '';
+    const preview=el('div','profile-color-preview',profile?.display_name||'Sua capa');
+    const bannerColor = el('input'); bannerColor.type = 'color'; bannerColor.value = prefs.bannerColor || '#7c5cff';
+    preview.style.backgroundColor=bannerColor.value;bannerColor.oninput=()=>preview.style.backgroundColor=bannerColor.value;
+    const fontLabel = el('label','field','Fonte do nome'); fontLabel.append(font);
+    const effectLabel = el('label','field','Efeito do nome'); effectLabel.append(effect);
+    const colorLabel = el('label','field','Cor da capa'); colorLabel.append(bannerColor);
+    container.append(preview,el('p','muted','Personalização local do seu perfil neste dispositivo.'),fontLabel, effectLabel, colorLabel,
+      button('Salvar', () => {
+        saveProfilePrefs({ font: font.value, effect: effect.value, bannerColor: bannerColor.value });
+        $('app-dialog').close();
+        toast('Personalização salva.');
+      }, 'primary')
+    );
+  });
+}
+// Hook into settings if available
+const originalSettingsClick = $('settings')?.onclick;
+if ($('settings')) {
+  $('settings').onclick = function(e) {
+    if (originalSettingsClick) originalSettingsClick.call(this, e);
+    setTimeout(() => {
+      const body = $('dialog-content');
+      if (body && !body.querySelector('#profile-custom-btn')) {
+        const btn = button('Personalizar nome e capa', openProfileCustomizer, 'soft-button');
+        btn.id = 'profile-custom-btn';
+        body.append(btn);
+      }
+    }, 50);
+  };
+}
+applyProfileStyles();
+
+// === Server / community theme ===
+const SERVER_THEME_KEY = 'orbita-server-theme';
+function loadServerTheme() {
+  try { return JSON.parse(localStorage.getItem(SERVER_THEME_KEY+':'+(session?.user.id||'guest')+':'+activeCommunity) || '{}') || {}; }
+  catch { return {}; }
+}
+function applyServerTheme() {
+  const t = !home&&session ? loadServerTheme() : {};
+  const root = document.documentElement;
+  for(const [key,value] of [['--accent',t.accent],['--bg-main',t.bg]]){if(/^#[0-9a-f]{6}$/i.test(value||''))root.style.setProperty(key,value);else root.style.removeProperty(key);}
+  const banner=$('server-banner-box');let url;try{url=new URL(t.banner);if(url.protocol!=='https:')url=null;}catch{}
+  banner.style.backgroundImage=url?'linear-gradient(#0003,#0007),url('+JSON.stringify(url.href)+')':'';banner.style.backgroundSize='cover';banner.style.backgroundPosition='center';
+}
+function openServerSettings() {
+  showDialog('Configurações do servidor', container => {
+    const t = loadServerTheme();
+    const accent = el('input'); accent.type = 'color'; accent.value = t.accent || '#7c5cff';
+    const bg = el('input'); bg.type = 'color'; bg.value = t.bg || '#10101b';
+    const banner = el('input'); banner.type = 'url'; banner.placeholder = 'URL da imagem de fundo (opcional)'; banner.value = t.banner || '';
+    container.append(
+      el('p','muted','Personalize cores e fundo desta comunidade (local).'),
+      (()=>{const l=el('label','field','Cor de destaque');l.append(accent);return l;})(),
+      (()=>{const l=el('label','field','Fundo principal');l.append(bg);return l;})(),
+      (()=>{const l=el('label','field','Banner (URL)');l.append(banner);return l;})(),
+      button('Aplicar', () => {
+        if(banner.value.trim()){let parsed;try{parsed=new URL(banner.value.trim());}catch{}if(!parsed||parsed.protocol!=='https:')throw Error('Use um endereço HTTPS válido para o banner.');}
+        localStorage.setItem(SERVER_THEME_KEY+':'+(session?.user.id||'guest')+':'+activeCommunity, JSON.stringify({ accent: accent.value, bg: bg.value, banner: banner.value }));
+        applyServerTheme();
+        $('app-dialog').close();
+        toast('Tema do servidor aplicado.');
+      }, 'primary')
+    );
+  });
+}
+// Add button in community menu if possible
+setTimeout(() => {
+  const menu = document.querySelector('#sidebar-server-title')?.parentElement;
+  if (menu && !document.getElementById('server-settings-btn')) {
+    const btn = button('⚙', openServerSettings, 'tiny-button');
+    btn.id = 'server-settings-btn';
+    btn.title = 'Configurações do servidor';
+    menu.append(btn);
+  }
+}, 2000);
+applyServerTheme();
+
+let preferencesFrame;
+const preferencesObserver=new MutationObserver(()=>{if(preferencesFrame)return;preferencesFrame=requestAnimationFrame(()=>{preferencesFrame=null;applyProfileStyles();applyServerTheme();});});
+preferencesObserver.observe($('app-view'),{childList:true,subtree:true,attributes:true,attributeFilter:['hidden']});

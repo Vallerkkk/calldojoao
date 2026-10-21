@@ -1,6 +1,6 @@
 # Recursos e uso
 
-A interface foi adaptada à referência local orbita.html: superfícies escuras com acentos roxos, navegação lateral, composer destacado e layout para celular. Não exige um serviço pago adicional.
+A interface utiliza superfícies escuras com acentos roxos, navegação lateral, composer destacado e layout para celular. Não exige um serviço pago adicional.
 
 - **Mensagens:** o menu ⋯ de cada mensagem reúne respostas, reações, edição, exclusão, fixação, Thread e copiar link. Busca no histórico pelo ícone de lupa ou Enter no campo de busca, menções com autocomplete e Tab, edição com revisão e exclusão com confirmação. “Copiar link” abre a mensagem respeitando as permissões do canal.
 - **Arquivos:** escolha até cinco arquivos, arraste-os ou cole uma imagem no composer. JPG, PNG e WebP estáticos são redimensionados e comprimidos no próprio dispositivo. GIFs e WebP animados mantêm a animação. Avatares usam até 384 px; banners, 1600 px; anexos, 1920 px no maior lado. O limite final permanece em 25 MB por anexo e 5 MB por imagem de perfil.
@@ -45,4 +45,4 @@ O teste `tests/browser_smoke.cjs` usa Playwright e contas simuladas. Execute com
 
 ## Revisão de confiabilidade
 
-Consulte REVISAO.md para as correções e validações de 20/10/2026. O composer aceita Shift+Enter; rascunhos ficam separados por canal durante a sessão. A criação de canais privados, as permissões de chamadas e as notificações receberam testes adicionais.
+As validações automatizadas estão na pasta `tests/`. O composer aceita Shift+Enter; rascunhos ficam separados por canal durante a sessão. A criação de canais privados, as permissões de chamadas e as notificações receberam testes adicionais.
