@@ -45,6 +45,7 @@ export function watchUploadedVideo(video){
   if(clips.has(video))return video;
   init();video.classList.add('uploaded-video');video.controls=true;video.playsInline=true;
   video.defaultMuted=true;video.muted=true;video.preload='metadata';
+  const output=localStorage.getItem('orbita-audio-output');if(output&&video.setSinkId)video.setSinkId(output).catch(()=>{});
   // Calling play only for visible clips avoids background downloads and playback.
   const record={visible:!visibilityObserver,manualPause:false,autoPause:false,pending:false,disposed:false,events:[]};
   record.events=[
@@ -55,4 +56,8 @@ export function watchUploadedVideo(video){
   clips.set(video,record);for(const [name,handler] of record.events)video.addEventListener(name,handler);
   if(visibilityObserver)visibilityObserver.observe(video);else video.addEventListener('canplay',()=>start(video,record),{once:true});
   return video;
+}
+
+export async function setUploadedVideoOutput(id){
+  await Promise.all([...clips.keys()].filter(video=>typeof video.setSinkId==='function').map(video=>video.setSinkId(id||'')));
 }

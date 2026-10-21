@@ -108,3 +108,16 @@ Vídeos enviados ao feed, aos canais, às DMs e às threads têm player inline c
 Importados os oito temas adicionais, os cartões de edição e personalização de perfil, banners de 160 px e o enquadramento ampliado das mídias do feed. A integração preserva o avatar inferior corrigido, a reprodução automática sem som, os controles de chamada e a recuperação de sessão. Diálogos de perfil permitem rolagem em telas baixas e fechamento com área de toque de 44 px; o editor mantém checkboxes no tamanho correto e avatar com dimensões definidas.
 
 `tests/jesus11_browser.cjs` verifica cartões, dimensões, temas e persistência no PC e celular. O pacote enviado não altera o backend ou o banco de dados. Arquivos locais de ambiente e dependências do ZIP não entram na publicação.
+
+
+### Áudio e reações da chamada
+
+A coluna lateral direita de membros e seu botão foram retirados. Perfis continuam acessíveis pelas mensagens, amigos e participantes da chamada. O conteúdo ocupa o espaço disponível também no celular, sem montar a lista lateral oculta.
+
+Configurações e Opções de áudio da chamada oferecem seleção de microfone e saída, com preferências locais e aplicação imediata. A troca usa a API do LiveKit e mantém os volumes individuais e o estado de mute. Os sons do aplicativo e vídeos enviados acompanham a saída escolhida quando o navegador oferece a API; navegadores sem suporte indicam que a saída deve ser escolhida no sistema. Atualizar dispositivos solicita permissão explicitamente e encerra o fluxo temporário de microfone.
+
+A redução de ruído adicional usa RNNoise em WebAssembly/AudioWorklet, com filtro de graves, processamento a 48 kHz e execução no próprio aparelho. O modo padrão é aprimorado; é possível escolher somente o filtro do navegador. Falhas de compatibilidade ou carregamento preservam a supressão nativa e o microfone. O processador reinicia ao trocar de entrada e libera seus nós, faixas de saída e contexto de áudio ao encerrar. Fontes e licenças das dependências fixadas estão em `static/vendor/rnnoise-0.4.1/`.
+
+O seletor de reações oferece 12 emojis, animações com nome do participante, indicação acessível, limite de frequência por pessoa e limpeza ao sair. Reduzir movimento é respeitado. Sons de aviso, entrada/saída e efeitos usam envelopes suaves e compressão, com volumes separados para avisos e soundboard. Aplausos e Pop se juntam aos quatro efeitos anteriores; controles de silêncio e Não perturbe continuam respeitados.
+
+`tests/audio_experience_browser.cjs` executa o RNNoise real com ruído sintético, mede redução do sinal e verifica reinício/limpeza. Testa ainda seleção de dispositivos simulados, retorno após falha, fallback do filtro, saída indisponível, reações remotas e volumes no PC e celular. Nenhum dispositivo físico é aberto pelos testes e nenhum serviço pago foi adicionado.

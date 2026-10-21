@@ -1,14 +1,16 @@
+import {initAudioControls} from './audio-controls.js?v=audio-20261021-1';
+import {initCallReactions} from './call-reactions.js?v=audio-20261021-1';
 import { initCommunityUX } from './community-ux.js?v=community-20261021-1';
-import { initCallLayout } from './call-layout.js?v=jesus9-20261021-1';
-import { initSocialFeed } from './social-feed.js?v=media-20261021-1';
-import { watchUploadedVideo } from './uploaded-video.js?v=media-20261021-1';
+import { initCallLayout } from './call-layout.js?v=audio-20261021-1';
+import { initSocialFeed } from './social-feed.js?v=audio-20261021-1';
+import { watchUploadedVideo,setUploadedVideoOutput } from './uploaded-video.js?v=audio-20261021-1';
 import { compressImage, relativeTime, safeLink, stickerNames } from './media-utils.js?v=fluency-20261020-2';
-import { initEnhancements } from './enhancements.js?v=media-20261021-1';
+import { initEnhancements } from './enhancements.js?v=audio-20261021-1';
 import { DraftStore, serialToggle } from './runtime-utils.js?v=fluency-20261020-2';
 import { ConversationCache, MessageOutbox, conversationKey, requestWithDeadline } from './chat-state.js?v=review-20261021-1';
 import { reconcileNodes, reserveImage, focusElement } from './dom-utils.js?v=fluency-20261020-2';
 import { choosePrivateCall } from './private-call-menu.js?v=videochamada-20261020-1';
-let enhancements, feed, callLayout, communityUX;
+let enhancements, feed, callLayout, communityUX, audioTools, callReactions;
 const drafts = new DraftStore(), pendingSends = new Set();
 const draftKey = target => session && target ? session.user.id + ':' + (target.private ? 'dm:' : 'channel:') + target.id : '';
 function saveComposerDraft() { if (!home && selected?.kind === 'text') drafts.set(draftKey(selected), $('message-input').value); }
@@ -592,7 +594,7 @@ function updateSpeakingUI() {
 async function leaveCall({preserveJoin=false}={}) {
   if(!preserveJoin)cancelCallJoin();
   cameraTask=null;const previous = room;if(previous)microphoneSwitch.set(previous.localParticipant,false);room = null;callChannel = null;talkHeld=false;
-  enhancements?.callEnded(previous);
+  enhancements?.callEnded(previous);callReactions?.clear();
   if (previous) previous.removeAllListeners();
   for(const entry of [...callMedia.values()])disposeMedia(entry);
   document.querySelectorAll('[data-remote-audio]').forEach(node => node.remove());
@@ -641,7 +643,7 @@ $('join-call').onclick = async () => {
     connected.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {if(room!==connected)return;onTrack(track, participant, publication);updateCallUI();})
       .on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {if(room!==connected)return;removeTrack(track, publication, participant);updateCallUI();})
       .on(RoomEvent.TrackUnpublished, (publication, participant) => {if(room!==connected)return;removeTrack(publication.track,publication,participant);updateCallUI();})
-      .on(RoomEvent.LocalTrackPublished, publication => { if(room!==connected)return;if(publication.track?.kind==='video')onTrack(publication.track,connected.localParticipant,publication);updateCallUI(); })
+      .on(RoomEvent.LocalTrackPublished, publication => { if(room!==connected)return;if(publication.track?.kind==='audio')audioTools?.sync(connected).catch(()=>{});if(publication.track?.kind==='video')onTrack(publication.track,connected.localParticipant,publication);updateCallUI(); })
       .on(RoomEvent.LocalTrackUnpublished, publication => {if(room!==connected)return;removeTrack(publication.track,publication,connected.localParticipant);updateCallUI();});
     for (const event of [RoomEvent.ParticipantConnected, RoomEvent.ParticipantDisconnected, RoomEvent.TrackMuted, RoomEvent.TrackUnmuted]) connected.on(event, updateCallUI);
     connected.on(RoomEvent.ActiveSpeakersChanged,updateSpeakingUI);
@@ -657,6 +659,7 @@ $('join-call').onclick = async () => {
     enhancements.connected(connected,RoomEvent,result);
     try { if(result.canPublish!==false)await connected.localParticipant.setMicrophoneEnabled(!pushToTalk&&!deafened, audioCapture()); }
     catch (error) { toast('Você entrou sem microfone. ' + errorText(error)); }
+    if(current()&&room===connected)await audioTools?.connected(connected);
     if(!current()||room!==connected)await connected.disconnect();
   } catch (error) { if(current()){if(room===connected)await leaveCall({preserveJoin:true});toast(errorText(error));} }
   finally { if(callJoin===operation){callJoin=null;joining=false;updateCallUI();} }
@@ -757,7 +760,8 @@ const audioCapture = () => ({
   noiseSuppression: noise,
   echoCancellation: echoCancellation,
   autoGainControl: autoGainControl,
-  channelCount: 1
+  channelCount: 1,
+  ...audioTools?.capture()
 });
 const scopeKey = target => target?.private ? 'conversation_id' : 'channel_id';
 const messageTable = () => selected?.private ? 'direct_messages' : 'messages';
@@ -855,6 +859,7 @@ async function initSocial() {
 }
 const memberNodes=new Map();
 function renderMembers() {
+  if($('members-sidebar').hidden){memberNodes.clear();if($('member-list').childElementCount)$('member-list').replaceChildren();return;}
   const memberIds=new Set(communityMemberList.map(member=>member.user_id));
   if(selected?.private){memberIds.clear();memberIds.add(session.user.id);memberIds.add(selected.friend?.id);}
   const visible=people.filter(p=>memberIds.has(p.id));
@@ -1041,7 +1046,7 @@ $('settings').onclick=()=>showDialog('Seu perfil e áudio',container=>{
     echoCancellation=echoCheck.checked;localStorage.setItem('orbita-echo',String(echoCancellation));
     autoGainControl=agcCheck.checked;localStorage.setItem('orbita-agc',String(autoGainControl));
     pushToTalk=ptt.checked;localStorage.setItem('orbita-push-to-talk',String(pushToTalk));
-    if(room){for(const pub of room.localParticipant.audioTrackPublications.values())if(pub.track?.source==='microphone')await pub.track.restartTrack(audioCapture());talkHeld=false;if(pushToTalk||deafened)await microphoneSwitch.set(room.localParticipant,false);}
+    if(room){for(const pub of room.localParticipant.audioTrackPublications.values())if(pub.track?.source==='microphone')await pub.track.restartTrack(audioCapture());await audioTools?.sync(room);talkHeld=false;if(pushToTalk||deafened)await microphoneSwitch.set(room.localParticipant,false);}
     await loadSocial();if(form.isConnected)$('app-dialog').close();toast('Perfil e áudio atualizados.');
   }catch(e){if(!saved&&created.length)await db.storage.from('orbita-files').remove(created.filter(Boolean));toast(e.code==='23505'?'Esse nome de usuário já está em uso.':errorText(e));}finally{save.disabled=false;}};
 });
@@ -1314,26 +1319,8 @@ $('dd-invite-btn').onclick=()=>copyInvitation().catch(e=>toast(errorText(e)));
 $('dm-quick-find').onclick=()=>showDialog('Busca rápida',container=>{const form=el('form'),input=inputField(form,'Canal ou @ de um amigo','',60),go=el('button','primary','Abrir');go.type='submit';form.append(go);container.append(form);form.onsubmit=async e=>{e.preventDefault();try{const text=input.value.trim().replace(/^[@#]/,'').toLowerCase(),ch=channels.find(c=>c.name.toLowerCase()===text),p=people.find(p=>p.username===text||p.display_name.toLowerCase()===text);if(ch){$('app-dialog').close();await selectChannel(ch);}else if(p){$('app-dialog').close();await startConversation(p);}else toast('Nenhum canal ou usuário encontrado.');}catch(error){toast(errorText(error));}};});
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('dm-quick-find').click();}});
 $('btn-search-toggle').onclick=()=>$('search-messages').focus();
-// Members panel toggle with persistence
-const MEMBERS_KEY = 'orbita-members-hidden';
-function applyMembersState() {
-  const saved = localStorage.getItem(MEMBERS_KEY);
-  const hidden = saved===null ? matchMedia('(max-width:1080px)').matches : saved==='true';
-  const mobile = matchMedia('(max-width:1080px)').matches;
-  document.body.classList.toggle('members-hidden', hidden && !mobile);
-  document.body.classList.toggle('members-open', !hidden && mobile);
-  $('btn-members-toggle').classList.toggle('active', !hidden);
-  $('btn-members-toggle').title = hidden ? 'Mostrar membros' : 'Ocultar membros';
-  $('btn-members-toggle').setAttribute('aria-expanded',String(!hidden));
-}
-applyMembersState();
-matchMedia('(max-width:1080px)').addEventListener('change',applyMembersState);
-$('btn-members-toggle').onclick = () => {
-  const currentlyHidden = document.body.classList.contains('members-hidden') || (matchMedia('(max-width:1080px)').matches && !document.body.classList.contains('members-open'));
-  const nextHidden = !currentlyHidden;
-  localStorage.setItem(MEMBERS_KEY, String(nextHidden));
-  applyMembersState();
-};
+// The right member column has been removed; profiles remain available in chat and calls.
+document.body.classList.add('members-hidden');document.body.classList.remove('members-open');$('members-sidebar').hidden=true;$('btn-members-toggle').hidden=true;$('btn-members-toggle').onclick=null;
   $('mobile-menu-btn').onclick=()=>{const open=document.body.classList.toggle('mobile-menu-open');$('mobile-menu-btn').setAttribute('aria-expanded',String(open));};
 document.addEventListener('click',event=>{if(!document.body.classList.contains('mobile-menu-open'))return;const target=event.target;if(!(target instanceof Element)||!target.closest('.sidebar,.rail,#mobile-menu-btn,.mobile-nav-btn'))closeMobileMenu();});
 for(const view of ['friends-view','voice-view']){const target=$(view).querySelector('.chat-title');const menu=button('☰',()=>{const open=document.body.classList.toggle('mobile-menu-open');menu.setAttribute('aria-expanded',String(open));},'mobile-nav-btn');menu.setAttribute('aria-label','Menu de canais');menu.setAttribute('aria-expanded','false');target.prepend(menu);}
@@ -1375,9 +1362,7 @@ $('dd-boost-btn').onclick=openCloud;$('banner-action-btn').onclick=openCloud;$('
 $('up-mic-btn').onclick=()=>$('mic').click();$('up-deafen-btn').onclick=()=>$('deafen').click();$('vb-mic').onclick=()=>$('mic').click();$('vb-video').onclick=()=>$('camera').click();$('dock-name').onclick=()=>{if(callChannel)selectChannel(callChannel);};
 $('back-to-call').onclick=()=>{if(selected?.private){const c=conversations.find(c=>c.id===selected.id);if(c)openConversation(c);}else{const c=channels.find(c=>c.community_id===activeCommunity&&c.kind==='text');if(c)selectChannel(c);}};
 $('connection-info').onclick=()=>showDialog('Conexão da chamada',container=>{container.append(el('p','',room?'Estado: '+room.state:'Você ainda não está em uma chamada.'));if(room){container.append(el('p','','Qualidade local: '+room.localParticipant.connectionQuality));for(const p of room.remoteParticipants.values())container.append(el('p','',(p.name||'Participante')+' · '+p.connectionQuality));}container.append(el('p','muted',`Vídeo adaptativo: perfil ${mediaSettings().mode}. O navegador ajusta a recepção à rede; áudio da tela só é liberado em abas e navegadores compatíveis.`));});
-let lastReaction=0;
-$('vc-react-call').onclick=async()=>{if(!room||Date.now()-lastReaction<2000)return;lastReaction=Date.now();try{await room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({type:'reaction',emoji:'🎉'})),{reliable:true,topic:'orbita-reaction'});toast('Você · 🎉');}catch(e){toast(errorText(e));}};
-function receiveCallData(payload,participant,_kind,topic){if(topic!=='orbita-reaction'||payload.length>200)return;try{const data=JSON.parse(new TextDecoder().decode(payload));if(data.type==='reaction'&&['🎉','❤️','👍','😂'].includes(data.emoji))toast((participant?.name||'Participante')+' · '+data.emoji);}catch{}}
+function receiveCallData(...args){callReactions?.receive(...args);}
 const screenLabel=el('label','screen-option'),screenCheck=el('input');screenCheck.type='checkbox';screenCheck.id='share-screen-audio';screenCheck.checked=localStorage.getItem('orbita-screen-audio')!=='false';screenLabel.append(screenCheck,document.createTextNode('Incluir áudio da tela (autorize também na janela do navegador)'));$('active-controls').before(screenLabel);
 function updateScreenAudio(){localStorage.setItem('orbita-screen-audio',String(screenCheck.checked));}
 screenCheck.onchange=updateScreenAudio;updateScreenAudio();
@@ -1496,7 +1481,7 @@ $('file-input').multiple=true;
 $('file-input').onchange=async()=>{const files=[...$('file-input').files];await enhancements.sendFiles(files);$('file-input').value='';$('file-input').accept='';};
 const updateBeforeDeviceControls=updateCallUI;
 updateCallUI=()=>{updateBeforeDeviceControls();updateCameraControl();};
-callLayout=initCallLayout({
+callLayout=initCallLayout({audioSettings:()=>audioTools?.open(),soundSettings:box=>enhancements?.soundFields(box),
   state:()=>({room,selected,callChannel,deafened}),report:error=>toast(errorText(error)),toast,button,dialog:showDialog,
   paragraph:text=>el('p','muted',text),invite:()=>{if(selected?.private)showDialog('Chamada privada',box=>box.append(el('p','','Esta conversa é privada. Abra Amigos para iniciar uma chamada com outra pessoa.'),button('Abrir Amigos',()=>{$('app-dialog').close();showFriends();})));else showCommunityInvite();},
   avatar:(node,id)=>{const p=person(id);if(p.display_name==='Participante'){p.display_name=node.parentElement.querySelector('.participant-name')?.textContent||p.display_name;}setAvatar(node,p);},
@@ -1802,7 +1787,7 @@ document.addEventListener('keydown', e => {
 
 
 const settingsBeforeBigPicture=$('settings').onclick;
-$('settings').onclick=function(event){settingsBeforeBigPicture.call(this,event);const box=$('dialog-content').querySelector('.dialog-body');if(!box)return;box.append(el('p','muted','A redução de ruído, o cancelamento de eco e o ganho automático são aplicados pelos controles de Áudio acima. A intensidade é ajustada pelo navegador e pelo dispositivo.'),button('Alternar Big Picture (Alt+Enter)',()=>{$('app-dialog').close();toggleBigPicture();}));};
+$('settings').onclick=function(event){settingsBeforeBigPicture.call(this,event);const box=$('dialog-content').querySelector('.dialog-body');if(!box)return;box.append(el('p','muted','A redução de ruído, o cancelamento de eco e o ganho automático são aplicados pelos controles de Áudio acima. O filtro adicional de voz pode ser escolhido em Entrada e saída de áudio.'),button('Alternar Big Picture (Alt+Enter)',()=>{$('app-dialog').close();toggleBigPicture();}));};
 
 communityUX=initCommunityUX({
  state:()=>({session,selected,channels,activeCommunity,room,home}),invite:()=>showCommunityInvite(),communityName:()=>communities.find(c=>c.id===activeCommunity)?.name||'Seu servidor',el,button,dialog:showDialog,report:error=>toast(errorText(error)),
@@ -1815,3 +1800,9 @@ const renderChannelsBeforeUX=renderChannels;renderChannels=()=>{renderChannelsBe
 const selectBeforeUX=selectChannel;selectChannel=async channel=>{await selectBeforeUX(channel);communityUX.update();};
 const friendsBeforeUX=showFriends;showFriends=()=>{friendsBeforeUX();communityUX.update();};
 communityUX.update();
+
+// Device preferences are local; no microphone is opened while listing settings.
+audioTools=initAudioControls({el,button,toast,dialog:showDialog,room:()=>room,noise:()=>noise,output:async id=>{await setUploadedVideoOutput(id);await enhancements.setAudioOutput(id);}});
+callReactions=initCallReactions({el,button,toast,dialog:showDialog,room:()=>room});
+const settingsBeforeAudioDevices=$('settings').onclick;
+$('settings').onclick=()=>{settingsBeforeAudioDevices();audioTools.fields($('dialog-content'));};

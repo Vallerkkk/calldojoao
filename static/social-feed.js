@@ -1,5 +1,5 @@
 import {compressImage, relativeTime} from './media-utils.js?v=fluency-20261020-2';
-import {watchUploadedVideo} from './uploaded-video.js?v=media-20261021-1';
+import {watchUploadedVideo} from './uploaded-video.js?v=audio-20261021-1';
 
 // Feed requests always carry the existing authenticated Supabase client.
 export function initSocialFeed(ctx) {

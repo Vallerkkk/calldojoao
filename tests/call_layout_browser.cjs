@@ -32,7 +32,7 @@ let browser;
   await page.locator('#mic-options').click();await page.getByRole('button',{name:'Configurar microfone, ruído e pressionar para falar',exact:true}).click();assert.equal(await page.locator('#app-dialog').evaluate(n=>n.open),true);await close();
   await page.locator('#camera-options').click();await page.locator('#camera-facing-menu').selectOption('environment');await close();assert.equal(await page.locator('#camera-facing').inputValue(),'environment');
   await page.locator('#screen-options').click();const check=page.locator('#app-dialog input[type=checkbox]');await check.uncheck();assert.equal(await page.locator('#share-screen-audio').isChecked(),false);await check.check();await close();
-  await page.locator('#vc-react-call').click();await page.waitForFunction(()=>window.__qaPublished?.some(p=>p.topic==='orbita-reaction'));
+  await page.locator('#vc-react-call').click();await page.getByRole('button',{name:'Reagir com 🎉',exact:true}).click();await page.waitForFunction(()=>window.__qaPublished?.some(p=>p.topic==='orbita-reaction'));
   await page.locator('#call-soundboard').click();await page.getByRole('button',{name:/Fanfarra/}).click();await page.waitForFunction(()=>window.__qaPublished?.some(p=>p.topic==='orbita-sound'));
   await page.locator('#call-more').click();await page.getByRole('button',{name:'Qualidade da conexão',exact:true}).click();await page.getByRole('heading',{name:'Conexão da chamada',exact:true}).waitFor();await close();
   await page.locator('#call-invite').click();await page.getByRole('heading',{name:'Convidar pessoas',exact:true}).waitFor();await close();

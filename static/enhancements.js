@@ -1,8 +1,9 @@
+import {createAppSounds,SOUND_EFFECTS} from './app-sounds.js?v=audio-20261021-1';
 import { relativeTime, safeLink, stickerNames, youtubeId, youtubeStart } from './media-utils.js?v=youtube-20261020-1';
 import { reserveImage, focusElement } from './dom-utils.js?v=fluency-20261020-2';
 import { requestWithDeadline } from './chat-state.js?v=review-20261021-1';
 import { requestAppInstall } from './app-install.js?v=launcher-20261020-1';
-import { watchUploadedVideo } from './uploaded-video.js?v=media-20261021-1';
+import { watchUploadedVideo } from './uploaded-video.js?v=audio-20261021-1';
 
 export function initEnhancements(context) {
   const { el, button, toast, checked, showDialog, inputField } = context;
@@ -11,7 +12,7 @@ export function initEnhancements(context) {
   let sessionVersion=0,channelVersion=0,threadReadVersion=0,installTask;
   let inbox, typing, subscribedUser, typingTimer, idle = false, idleTimer, lastTyped = 0, registration;
   let unread = {}, panel, panelKind, threadRoot, threadTarget, threadVersion = 0, threadCursor, threadMore;
-  let wakeLock, wakeRequest = false, watchRoom, watchEvents, audioContext, watchState, player, playerReady = false, playerTask, suppressPlayer = false, focusedLink;
+  let wakeLock, wakeRequest = false, watchRoom, watchEvents, watchState, player, playerReady = false, playerTask, suppressPlayer = false, focusedLink;
   let lastSound = new Map(), youtubePromise, searchTimer, searchVersion = 0, historyObserver, remoteSearch = false;
   const seenActivity = new Set(), typingUsers = new Map();
   const readSetting = (key, fallback) => localStorage.getItem('orbita-' + key) ?? fallback;
@@ -39,21 +40,13 @@ export function initEnhancements(context) {
     font.setAttribute('aria-label', 'Tamanho da fonte das mensagens'); const value = el('output', '', font.value + ' px');
     font.oninput = () => { localStorage.setItem('orbita-font-size', font.value); value.value = font.value + ' px'; applyAppearance(); };
     fontLabel.append(font, value); parent.append(fontLabel);
+    appSounds.fields(parent,el,button);
     checkbox(parent, 'Sons de avisos e chamadas', 'sounds'); checkbox(parent, 'Manter a tela acesa durante chamadas', 'wake-lock');
     parent.append(button('Instalar Órbita', installApp), button('Ativar notificações e push', enableNotifications), button('Desativar push neste dispositivo', disablePush),button('Sair da conta',()=>{$('app-dialog').close();$('logout').click();},'danger'));
   }
 
-  function audio(effect = 'notification') {
-    if (readSetting('sounds', 'true') === 'false' || state().deafened || state().profile?.presence_status === 'dnd') return;
-    try {
-      audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
-      if (audioContext.state !== 'running') return;
-      const notes = { notification:[660,880], join:[440,660], leave:[660,330], fanfare:[523,659,784,1046], coin:[988,1318], laser:[1200,160], powerup:[330,440,660,880] }[effect] || [660,880];
-      const now = audioContext.currentTime;
-      notes.forEach((frequency, index) => { const oscillator = audioContext.createOscillator(), gain = audioContext.createGain(); oscillator.type = effect === 'coin' ? 'square' : 'sine'; oscillator.frequency.value = frequency; gain.gain.setValueAtTime(0.035, now + index * 0.09); gain.gain.exponentialRampToValueAtTime(0.001, now + index * 0.09 + 0.15); oscillator.connect(gain); gain.connect(audioContext.destination); oscillator.start(now + index * 0.09); oscillator.stop(now + index * 0.09 + 0.16); });
-    } catch {}
-  }
-  document.addEventListener('pointerdown', () => { try { audioContext ||= new (window.AudioContext || window.webkitAudioContext)(); audioContext.resume().catch(() => {}); } catch {} }, { once:true });
+  const appSounds=createAppSounds(()=>state().deafened||state().profile?.presence_status==='dnd');
+  const audio=effect=>appSounds.play(effect);
 
   async function installPWA() {
     if(!('serviceWorker' in navigator))return;
@@ -337,7 +330,7 @@ export function initEnhancements(context) {
   async function publish(topic,value){const r=state().room;if(r?.state!=='connected')throw Error('Entre em uma chamada primeiro.');if((topic==='orbita-sound'||value.type==='state')&&r.localParticipant.permissions?.canPublish===false)throw Error('Como ouvinte, você acompanha a reprodução. Peça a um moderador para falar.');await r.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(value)),{reliable:true,topic});}
   function receiveRoomData(bytes,participant,_kind,topic){
     if(!participant||bytes.length>2048)return;let data;try{data=JSON.parse(new TextDecoder().decode(bytes));}catch{return;}if(!data||typeof data!=='object'||Array.isArray(data))return;
-    if(topic==='orbita-sound'&&participant.permissions?.canPublish!==false&&['fanfare','coin','laser','powerup'].includes(data.effect)){const last=lastSound.get(participant.identity)||0;if(Date.now()-last<2500)return;lastSound.set(participant.identity,Date.now());audio(data.effect);return;}
+    if(topic==='orbita-sound'&&participant.permissions?.canPublish!==false&&SOUND_EFFECTS.includes(data.effect)){const last=lastSound.get(participant.identity)||0;if(Date.now()-last<2500)return;lastSound.set(participant.identity,Date.now());audio(data.effect);return;}
     if(topic!=='orbita-watch'||watchRoom!==state().room)return;
     if(data.type==='request'){if(watchState?.host===state().session?.user.id)sendWatchState();return;}
     if(data.type!=='state'||participant.permissions?.canPublish===false||!/^[-\w]{11}$/.test(data.video||'')||!Number.isFinite(data.position)||data.position<0||data.position>86400||typeof data.playing!=='boolean')return;
@@ -460,7 +453,7 @@ export function initEnhancements(context) {
   });uiObserver.observe($('app-view'),{childList:true,subtree:true});accessibility();
   if('IntersectionObserver'in window)historyObserver=new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting)&&!remoteSearch)context.loadMessages();},{root:$('message-list'),rootMargin:'160px 0px 0px 0px'});
   function observeHistory(){const more=$('message-list').querySelector('.load-more');if(more!==observedSentinel){historyObserver?.disconnect();observedSentinel=more;if(more)historyObserver?.observe(more);}}
-  const options=button('Mais opções',()=>showDialog('Sua Órbita',container=>{container.append(button('Mensagens fixadas',()=>{$('app-dialog').close();$('pins-toggle').click();}),button('Lista de membros',()=>{$('app-dialog').close();$('btn-members-toggle').click();}),button('Buscar mensagens',()=>{$('app-dialog').close();showSearch($('search-messages').value);}),button('GIFs e stickers',showMediaPicker),button('Ouvir juntos',()=>{$('app-dialog').close();return showWatch();}),button('Moderação',showModeration),button('Auditoria',showAudit));preferenceFields(container);}), 'feature-options');
+  const options=button('Mais opções',()=>showDialog('Sua Órbita',container=>{container.append(button('Mensagens fixadas',()=>{$('app-dialog').close();$('pins-toggle').click();}),button('Buscar mensagens',()=>{$('app-dialog').close();showSearch($('search-messages').value);}),button('GIFs e stickers',showMediaPicker),button('Ouvir juntos',()=>{$('app-dialog').close();return showWatch();}),button('Moderação',showModeration),button('Auditoria',showAudit));preferenceFields(container);}), 'feature-options');
   options.title='Recursos, aparência e moderação';options.setAttribute('aria-label',options.title);document.querySelector('#text-view .chat-actions').append(options);
   document.querySelector('#voice-view .chat-actions').append(button('Ouvir juntos',showWatch,'feature-options'));
   const oldSettings=$('settings').onclick;$('settings').onclick=()=>{oldSettings();preferenceFields($('dialog-content'));};
@@ -473,5 +466,5 @@ export function initEnhancements(context) {
   const brand=$('friends-nav');brand.replaceChildren();const brandImage=el('img');brandImage.src='/static/icons/icon.svg';brandImage.alt='Órbita';reserveImage(brandImage,32,32);brand.append(brandImage);
   $('toast').setAttribute('role','status');$('toast').setAttribute('aria-live','polite');
   runTimers();
-  return { realtimeChanged, sessionChanged, channelChanged, enhanceMessage, decorateVideo, callUpdated, connected, callEnded, dispatchPush, messageReceived, messageDeleted, disablePush, decorateNavigation, presenceStatus, showMediaPicker, sendFiles, showModeration, showAudit, historyLoaded };
+  return { setAudioOutput:id=>appSounds.setOutput(id),soundFields:box=>appSounds.fields(box,el,button),realtimeChanged, sessionChanged, channelChanged, enhanceMessage, decorateVideo, callUpdated, connected, callEnded, dispatchPush, messageReceived, messageDeleted, disablePush, decorateNavigation, presenceStatus, showMediaPicker, sendFiles, showModeration, showAudit, historyLoaded };
 }
