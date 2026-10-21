@@ -1,5 +1,5 @@
 /* Visual system adapted from the supplied orbita.html. No continuous ambient animation. */
-:root{--bg-deep:#05060f;--bg-rail:#080a16;--bg-sidebar:#0c0f20;--bg-main:#101428;--bg-elevated:#181e38;--bg-floating:#12172e;--bg-input:#161c36;--bg-hover:#8b6dff14;--bg-active:#8b6dff2b;--accent:#8b6dff;--accent-hover:#b49dff;--accent-2:#38bdf8;--accent-3:#ff7a59;--accent-soft:#8b6dff26;--accent-glow:#8b6dff48;--text:#f4f6ff;--text-dim:#c5cbe8;--text-mut:#9ea6cc;--border:#a992ff1f;--border-strong:#a992ff38;--ease-ui:cubic-bezier(.22,1,.36,1)}
+:root{--bg-deep:#05050a;--bg-rail:#080811;--bg-sidebar:#0f0f19;--bg-main:#10101b;--bg-elevated:#1e1e30;--bg-floating:#141420;--bg-input:#222236;--bg-hover:#ffffff0d;--bg-active:#7c5cff29;--accent:#7c5cff;--accent-hover:#ad99ff;--accent-2:#5b8def;--accent-soft:#7c5cff26;--accent-glow:#7c5cff38;--text:#f3f3fa;--text-dim:#b4b4ca;--text-mut:#9696ae;--border:#ffffff12;--border-strong:#ffffff24;--ease-ui:cubic-bezier(.22,1,.36,1)}
 body{font-family:var(--font);letter-spacing:0;color-scheme:dark}body[data-color-mode=light]{color-scheme:light}
 .app{background:var(--bg-main);height:100dvh;width:100%;min-width:0}
 .main{position:relative;isolation:isolate;background:var(--bg-main)}
@@ -85,18 +85,3 @@ body[data-color-mode=light] .main::before{opacity:.35}body[data-color-mode=light
 @media(max-width:780px){.message-form #message-input{font-size:16px}.message-form .send-live{margin-bottom:0}.network-notice{padding:8px 14px}}
 
 .member[role=button]:focus-visible{outline:3px solid var(--accent-hover);outline-offset:1px}
-
-
-/* Orbital Auth & Planetary System Polish */
-.auth-view{background:radial-gradient(circle at 18% 22%,rgba(139,109,255,0.22),transparent 48%),radial-gradient(circle at 82% 78%,rgba(56,189,248,0.14),transparent 52%),var(--bg-deep)}
-.intro{position:relative;background:radial-gradient(ellipse at 50% 60%,rgba(139,109,255,0.16),transparent 68%),linear-gradient(180deg,rgba(8,10,22,0.7),rgba(5,6,15,0.95));border-right:1px solid var(--border)}
-.wordmark{display:inline-flex;align-items:center;gap:8px;font-weight:800;letter-spacing:2.5px;color:var(--text);text-shadow:0 0 24px var(--accent-glow)}
-.wordmark span{background:var(--accent-soft);border:1px solid var(--border-strong);color:var(--accent-hover);border-radius:99px;padding:3px 9px;font-weight:700}
-.orbit-art{position:relative;width:280px;height:175px;margin:28px auto;border:1px solid rgba(169,146,255,0.32);border-radius:50%;transform:rotate(-14deg);box-shadow:0 0 40px rgba(139,109,255,0.16),inset 0 0 30px rgba(56,189,248,0.08)}
-.orbit-art::before{content:'';position:absolute;inset:18px -28px;border:1px dashed rgba(56,189,248,0.28);border-radius:50%;transform:rotate(58deg)}
-.orbit-art::after{content:'';position:absolute;inset:-14px 16px;border:1px solid rgba(255,122,89,0.18);border-radius:50%;transform:rotate(-32deg);pointer-events:none}
-.planet{font-size:84px;text-align:center;line-height:170px;color:var(--accent-hover);text-shadow:0 0 32px var(--accent),0 0 80px rgba(56,189,248,0.45);filter:drop-shadow(0 0 18px rgba(139,109,255,0.5))}
-.sat{position:absolute;background:rgba(18,23,46,0.9);backdrop-filter:blur(8px);border:1px solid var(--border-strong);color:var(--text);padding:6px 14px;border-radius:99px;font-size:11px;font-weight:600;letter-spacing:.03em;transform:rotate(14deg);box-shadow:0 6px 20px rgba(0,0,0,0.45),0 0 12px var(--accent-soft)}
-.auth-card{background:linear-gradient(165deg,rgba(24,30,56,0.92),rgba(14,18,36,0.96));border:1px solid var(--border-strong);box-shadow:0 28px 90px rgba(0,0,0,0.65),0 0 40px rgba(139,109,255,0.12),inset 0 1px 0 rgba(255,255,255,0.12);backdrop-filter:blur(20px)}
-.auth-card .primary{background:linear-gradient(135deg,var(--accent),#6366f1 55%,var(--accent-2));border:1px solid rgba(255,255,255,0.18);box-shadow:0 8px 24px var(--accent-glow);border-radius:12px;padding:13px 18px;font-size:14px;font-weight:700;transition:transform .16s var(--ease-ui),box-shadow .16s var(--ease-ui)}
-.auth-card .primary:hover{transform:translateY(-1px);box-shadow:0 12px 30px var(--accent-glow)}
