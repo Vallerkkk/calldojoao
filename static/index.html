@@ -15,16 +15,18 @@
 <link rel="stylesheet" href="/static/interface.css?v=launcher-20261020-1">
 <link rel="stylesheet" href="/static/fluency.css?v=devices-20261020-1">
 <link rel="stylesheet" href="/static/social-feed.css?v=jesus11-20261021-1">
-<link rel="stylesheet" href="/static/call-layout.css?v=jesus9-20261021-1">
+<link rel="stylesheet" href="/static/call-layout.css?v=identity-20261021-1">
 <link rel="stylesheet" href="/static/community-ux.css?v=audio-20261021-1">
+<link rel="stylesheet" href="/static/identity.css?v=identity-20261021-1">
 </head>
 <body>
+<div id="entry-animation" class="entry-animation" role="status" aria-live="polite"><img src="/static/icons/icon.svg" width="72" height="72" alt=""><strong>Entrando na sua Órbita</strong><span>Preparando suas conversas…</span><div class="entry-progress" aria-hidden="true"></div></div>
 
 <section id="auth-view" class="auth-view">
   <div class="intro"><a class="wordmark" href="/">◉ ÓRBITA<span>BETA</span></a><div><p class="eyebrow">PERTO, DE QUALQUER LUGAR</p><h1>As melhores ideias<br>começam com<br><em>uma conversa.</em></h1><p class="intro-copy">Seu espaço para conversar, criar e estar junto.<br>Texto, voz e vídeo. Tudo na mesma órbita.</p><div class="orbit-art" aria-hidden="true"><div class="planet">◉</div><span class="sat s1">voz</span><span class="sat s2">ideias</span><span class="sat s3">conexões</span></div></div><small>Um espaço compartilhado. Infinitas conversas.</small></div>
   <div class="auth-card"><p class="eyebrow">BEM-VINDO À SUA COMUNIDADE</p><h2 id="auth-title">Bom ter você aqui.</h2><p id="auth-description" class="muted">Entre para encontrar a sua galera.</p>
   <div id="setup" class="notice" hidden>O site está pronto para configurar. Preencha o arquivo <code>.env</code> e execute <code>supabase.sql</code> no Supabase. Consulte o README da pasta.</div>
-  <form id="auth-form"><label id="name-label" hidden>Como devemos chamar você?<input id="display-name" maxlength="50" autocomplete="nickname" placeholder="Seu nome"></label><label>E-mail<input id="email" type="email" autocomplete="email" required placeholder="voce@exemplo.com"></label><label>Senha<input id="password" type="password" minlength="8" autocomplete="current-password" required placeholder="Pelo menos 8 caracteres"></label><button id="auth-submit" class="primary" type="submit">Entrar na Órbita <span>↗</span></button></form>
+  <form id="auth-form"><label id="name-label" hidden>Seu nickname (também será seu @)<input id="display-name" disabled maxlength="24" minlength="3" pattern="[A-Za-z0-9_]{3,24}" autocomplete="nickname" placeholder="Ex.: VallerJP"></label><label>E-mail<input id="email" type="email" autocomplete="email" required placeholder="voce@exemplo.com"></label><label>Senha<input id="password" type="password" minlength="8" autocomplete="current-password" required placeholder="Pelo menos 8 caracteres"></label><button id="auth-submit" class="primary" type="submit">Entrar na Órbita <span>↗</span></button></form>
   <p id="auth-status" role="status" class="muted"></p><button id="toggle-auth" class="text-button">Ainda não tem conta? Cadastre-se</button><p class="fine">Microfone e câmera só são ativados com a sua permissão.</p><a class="auth-install-link" href="/instalar" target="_blank" rel="noopener noreferrer">↓ Baixar / instalar Órbita</a></div>
 </section>
 
@@ -474,4 +476,4 @@
 <button id="back-to-call-dock" hidden>Voltar à chamada</button>
 <div id="incoming-call" class="incoming-call" hidden><strong id="incoming-name"></strong><button id="answer-call" class="primary">Atender</button><button id="decline-call" class="danger">Recusar</button></div>
 <dialog id="app-dialog" aria-labelledby="dialog-title"><div class="dialog-header"><h2 id="dialog-title"></h2><button id="dialog-close" aria-label="Fechar">×</button></div><div id="dialog-content"></div></dialog>
-<script type="module" src="/static/app.js?v=audio-20261021-1"></script><div id="creators-credit" class="creators-credit"></div></body></html>
+<script type="module" src="/static/app.js?v=identity-20261021-1"></script><div id="creators-credit" class="creators-credit"></div></body></html>

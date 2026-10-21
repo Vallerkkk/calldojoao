@@ -1,11 +1,12 @@
+import {initAdminControls} from './admin-controls.js?v=identity-20261021-1';
 import {initAudioControls} from './audio-controls.js?v=audio-20261021-1';
 import {initCallReactions} from './call-reactions.js?v=audio-20261021-1';
 import { initCommunityUX } from './community-ux.js?v=community-20261021-1';
-import { initCallLayout } from './call-layout.js?v=audio-20261021-1';
+import { initCallLayout } from './call-layout.js?v=identity-20261021-1';
 import { initSocialFeed } from './social-feed.js?v=audio-20261021-1';
 import { watchUploadedVideo,setUploadedVideoOutput } from './uploaded-video.js?v=audio-20261021-1';
 import { compressImage, relativeTime, safeLink, stickerNames } from './media-utils.js?v=fluency-20261020-2';
-import { initEnhancements } from './enhancements.js?v=audio-20261021-1';
+import { initEnhancements } from './enhancements.js?v=identity-20261021-1';
 import { DraftStore, serialToggle } from './runtime-utils.js?v=fluency-20261020-2';
 import { ConversationCache, MessageOutbox, conversationKey, requestWithDeadline } from './chat-state.js?v=review-20261021-1';
 import { reconcileNodes, reserveImage, focusElement } from './dom-utils.js?v=fluency-20261020-2';
@@ -74,12 +75,13 @@ function errorText(error) {
   if (error?.name === 'NotAllowedError') return 'Permissão recusada. Autorize o dispositivo no navegador.';
   if (error?.name === 'NotFoundError') return 'Nenhum dispositivo compatível foi encontrado.';
   if (error?.message === 'Invalid login credentials') return 'E-mail ou senha incorretos.';
+  if(error?.message==='Database error saving new user')return 'Não foi possível criar a conta. Tente outro nickname; ele pode já estar em uso.';
   if (error?.message === 'Email not confirmed') return 'Confirme seu e-mail antes de entrar.';
   return error?.message || 'Não foi possível concluir. Tente novamente.';
 }
 
 $('toggle-auth').onclick = () => {
-  signup = !signup; $('name-label').hidden = !signup; $('display-name').required = signup;
+  signup = !signup; $('name-label').hidden = !signup; $('display-name').required = signup;$('display-name').disabled=!signup;
   $('auth-title').textContent = signup ? 'Sua galera espera você.' : 'Bom ter você aqui.';
   $('auth-description').textContent = signup ? 'Crie uma conta e entre na conversa.' : 'Entre para encontrar a sua galera.';
   $('auth-submit').textContent = signup ? 'Criar minha conta ↗' : 'Entrar na Órbita ↗';
@@ -90,6 +92,7 @@ $('auth-form').onsubmit = async event => {
   event.preventDefault(); if (!db) return;
   $('auth-submit').disabled = true; $('auth-status').textContent = '';
   try {
+    if(signup&&!/^[A-Za-z0-9_]{3,24}$/.test($('display-name').value.trim()))throw Error('Escolha um nickname de 3 a 24 letras, números ou _.');
     const credentials = {email: $('email').value.trim(), password: $('password').value};
     const {data, error} = signup
       ? await db.auth.signUp({...credentials, options: {data: {display_name: $('display-name').value.trim()}}})
@@ -106,7 +109,7 @@ async function showSession(next) {
   if(session?.user.id===next?.user.id&&next&&(sessionReady||sessionInitializing)){session=next;return;}
   cancelCallJoin();
   feed?.sessionChanged();
-  sessionInitializing=!!next;sessionReady=false;sessionRecovery.hidden=true;
+  sessionInitializing=!!next;sessionReady=false;sessionRecovery.hidden=true;setEntryBusy(!!next);
   const previousUser=session?.user.id,transition=++sessionTransition;
   stopConversation();generation++;
   if(previousUser&&previousUser!==next?.user.id){
@@ -143,7 +146,7 @@ async function showSession(next) {
     await selectChannel(channels.find(c => c.community_id===activeCommunity&&c.default_for_new_members&&c.kind==='text')||channels.find(c => c.community_id===activeCommunity&&c.kind === 'text') || channels.find(c=>c.community_id===activeCommunity) || channels[0]);
     if(transition===sessionTransition)sessionReady=true;
   }catch(error){if(transition===sessionTransition){toast('Não foi possível carregar a comunidade: '+errorText(error));sessionRecovery.hidden=false;}}
-  finally{if(transition===sessionTransition)sessionInitializing=false;}
+  finally{if(transition===sessionTransition){sessionInitializing=false;setEntryBusy(false);}}
   if(transition===sessionTransition){await enhancements.sessionChanged();feed?.deepLink();}
 }
 $('logout').onclick = async () => {
@@ -492,7 +495,7 @@ function syncCallMedia() {
   const participants = room ? new Set([room.localParticipant.identity, ...room.remoteParticipants.keys()]) : new Set();
   for (const entry of [...callMedia.values()]) {
     if (!participants.has(entry.participantId)) { disposeMedia(entry); continue; }
-    if (entry.tile) entry.tile.hidden = !!(entry.track.isMuted || entry.publication?.isMuted);
+    if (entry.tile){entry.tile.hidden=!!(entry.track.isMuted||entry.publication?.isMuted);const label=entry.tile.querySelector('figcaption>span'),nickname=peopleById.get(entry.participantId)?.display_name;if(label&&nickname){const value=nickname+(entry.source==='screen_share'?' · Tela':' · Câmera');if(label.textContent!==value)label.textContent=value;}}
   }
 }
 function onTrack(track, participant, publication) {
@@ -514,9 +517,9 @@ function onTrack(track, participant, publication) {
     const figure = el('figure', 'media-tile' + (isScreen ? ' media-screen' : '')); if(sid)figure.dataset.track=sid;figure.dataset.participantId=participant.identity;entry.tile=figure;
     media.muted = true; media.playsInline = true;
     const caption = el('figcaption');
-    caption.append(el('span', '', (participant.name || 'Participante') + (isScreen ? ' · Tela' : ' · Câmera')));
+    caption.append(el('span', '', (peopleById.get(participant.identity)?.display_name || participant.name || 'Participante') + (isScreen ? ' · Tela' : ' · Câmera')));
     const expand = el('button', 'expand-video', 'Tela cheia');
-    expand.type = 'button'; expand.setAttribute('aria-label', `Ver ${isScreen ? 'tela' : 'câmera'} de ${participant.name || 'Participante'} em tela cheia`);
+    expand.type = 'button'; expand.setAttribute('aria-label', `Ver ${isScreen ? 'tela' : 'câmera'} de ${peopleById.get(participant.identity)?.display_name || participant.name || 'Participante'} em tela cheia`);
     expand.onclick = async () => {
       try {
         if (document.fullscreenElement === figure) await document.exitFullscreen();
@@ -569,7 +572,7 @@ function updateCallUI() {
       let card=participantCards.get(participant.identity);
       if(!card){card=el('div','participant');card.dataset.participantId=participant.identity;card.append(el('span','avatar'),el('strong','participant-name'),el('small','participant-status'));
         participantCards.set(participant.identity,card);}
-      card.classList.toggle('speaking',!!participant.isSpeaking);const name=participant.name||'Participante';card.querySelector('.avatar').textContent=initials(name);card.querySelector('.participant-name').textContent=name;
+      card.classList.toggle('speaking',!!participant.isSpeaking);const name=peopleById.get(participant.identity)?.display_name||participant.name||'Participante';card.querySelector('.avatar').textContent=initials(name);card.querySelector('.participant-name').textContent=name;
       card.querySelector('.participant-status').textContent=`${participant.isMicrophoneEnabled?'Microfone ligado':'Microfone desligado'} · ${qualityText(participant.connectionQuality)}`;
       for(const slider of card.querySelectorAll('input[data-audio-source]')){
         const source=slider.dataset.audioSource;slider.setAttribute('aria-label',(source==='microphone'?'Volume do microfone de ':'Volume da transmissão de ')+name);
@@ -729,12 +732,13 @@ document.addEventListener('pointerdown',()=>{const current=room;if(current?.stat
 window.addEventListener('pagehide', () => { shuttingDown = true;cancelCallJoin();if(presenceChannel)presenceChannel.untrack();leaveCall().catch(()=>{}); });
 window.addEventListener('pageshow', event => { shuttingDown = false;if(event.persisted&&session){publishVoicePresence(true).catch(()=>{});if(!home&&selected?.kind==='text'){subscribeMessages(selected,generation);loadMessages(generation,true);}} });
 
+function setEntryBusy(busy){const entry=$('entry-animation');if(entry)entry.hidden=!busy;$('app-view').inert=busy;$('auth-view').inert=busy;}
 const startupRetry=el('button','soft-button','Tentar novamente');startupRetry.type='button';startupRetry.hidden=true;startupRetry.onclick=()=>boot();$('auth-status').after(startupRetry);
 const sessionRecovery=el('div','session-recovery');sessionRecovery.hidden=true;sessionRecovery.setAttribute('role','status');sessionRecovery.append(el('p','','Não foi possível carregar sua comunidade.'),button('Tentar carregar novamente',()=>showSession(session)));document.body.append(sessionRecovery);
 let booting=false;
 window.addEventListener('online',()=>{if(!startupRetry.hidden)boot();});
 async function boot() {
-  if(booting)return;booting=true;startupRetry.hidden=true;$('auth-status').textContent='';
+  if(booting)return;booting=true;setEntryBusy(true);startupRetry.hidden=true;$('auth-status').textContent='';
   try {
     config=await requestWithDeadline(async signal=>{const response=await fetch('/api/config',{signal});if(!response.ok)throw Error('O servidor está indisponível. Aguarde e tente novamente.');return response.json();},{timeout:30000});
     if (!config.configured) { $('setup').hidden = false; $('auth-submit').disabled = true; return; }
@@ -742,9 +746,9 @@ async function boot() {
     if(!db){db=createClient(config.supabaseUrl,config.supabaseKey);
     // Supabase calls run outside the Auth callback to avoid locking the session.
     db.auth.onAuthStateChange((_event,next)=>{setTimeout(()=>showSession(next).catch(error=>toast(errorText(error))),0);});}
-    const {data, error} = await db.auth.getSession(); if (error) throw error;
+    const {data, error} = await requestWithDeadline(()=>db.auth.getSession(),{timeout:30000}); if (error) throw error;
     await showSession(data.session);$('auth-submit').disabled=false;
-  }catch(error){$('auth-status').textContent='Não foi possível conectar. '+errorText(error);$('auth-submit').disabled=true;startupRetry.hidden=false;}finally{booting=false;}
+  }catch(error){$('auth-status').textContent='Não foi possível conectar. '+errorText(error);$('auth-submit').disabled=true;startupRetry.hidden=false;}finally{booting=false;if(!sessionInitializing)setEntryBusy(false);}
 }
 // Social features share the authenticated Supabase client and its row policies.
 let peopleById=new Map(),peopleByUsername=new Map();const profileMediaUrls=new Map();
@@ -823,7 +827,7 @@ async function loadSocial() {
   if(session?.user.id!==userId||revision!==socialRevision)return;[people,friendships,conversations]=results;peopleById=new Map(people.map(p=>[p.id,p]));peopleByUsername=new Map(people.map(p=>[p.username?.toLowerCase(),p]));
   profile=person(session.user.id);await hydrateProfileMedia();if(session?.user.id!==userId||revision!==socialRevision)return;$('user-name').textContent=profile.display_name;
   setAvatar($('user-avatar'),profile);
-  renderSocial();renderMembers();if(home)renderFriends();
+  renderSocial();renderMembers();if(home)renderFriends();if(room)updateCallUI();
 }
 async function hydrateProfileMedia(){
   const profiles=people,uid=session?.user.id,paths=[...new Set(profiles.flatMap(p=>[p.avatar_url,p.banner_url].filter(Boolean)))];
@@ -1024,7 +1028,8 @@ $('settings').onclick=()=>showDialog('Seu perfil e áudio',container=>{
   wrap.append(av);
   card.append(wrap);
   const form=el('form');
-  const name=inputField(form,'Nome de exibição',profile.display_name,50),username=inputField(form,'Nome de usuário (3–24 letras, números ou _)',profile.username,24),bio=inputField(form,'Sobre você',profile.bio,160),pronouns=inputField(form,'Pronomes',profile.pronouns,32),activity=inputField(form,'Atividade (ex.: Jogando Minecraft / Ouvindo música)',profile.presence_activity,80),color=inputField(form,'Cor do perfil',profile.avatar_color,7);color.type='color';
+  const name=inputField(form,'Nickname (também será seu @)',/^[A-Za-z0-9_]{3,24}$/.test(profile.display_name)?profile.display_name:profile.username,24),bio=inputField(form,'Sobre você',profile.bio,160),pronouns=inputField(form,'Pronomes',profile.pronouns,32),activity=inputField(form,'Atividade (ex.: Jogando Minecraft / Ouvindo música)',profile.presence_activity,80),color=inputField(form,'Cor do perfil',profile.avatar_color,7);color.type='color';
+  name.pattern='[A-Za-z0-9_]{3,24}';name.minLength=3;name.required=true;const nicknameHint=el('p','muted');name.closest('label').after(nicknameHint);const hint=()=>nicknameHint.textContent='Para adicionar você: @'+name.value.trim().toLowerCase()+' · 3–24 letras, números ou _';name.addEventListener('input',hint);hint();
   const avatarFile=profileFileField(form,'Foto do perfil',profile.avatar_src),bannerFile=profileFileField(form,'Banner (pode ser GIF animado)',profile.banner_src);
   form.append(el('h3','','Áudio'));
   form.append(el('p','muted','Ajustes aplicados ao microfone. O navegador e o dispositivo podem limitar o efeito real.'));
@@ -1039,7 +1044,7 @@ $('settings').onclick=()=>showDialog('Seu perfil e áudio',container=>{
     const avatarUrl=avatarFile.files[0]?await uploadProfileAsset(avatarFile.files[0],'avatar'):prior.avatar_url||'';if(avatarUrl!==prior.avatar_url)created.push(avatarUrl);
     const bannerUrl=bannerFile.files[0]?await uploadProfileAsset(bannerFile.files[0],'banner'):prior.banner_url||'';if(bannerUrl!==prior.banner_url)created.push(bannerUrl);
     if(session?.user.id!==uid)throw Error('Sua conta mudou; salve o perfil novamente.');
-    const updated=await checked(db.from('profiles').update({display_name:name.value.trim(),username:username.value.trim().toLowerCase(),bio:bio.value.trim(),pronouns:pronouns.value.trim(),presence_activity:activity.value.trim(),avatar_color:color.value,avatar_url:avatarUrl,banner_url:bannerUrl}).eq('id',uid).select('id'));
+    const updated=await checked(db.from('profiles').update({display_name:name.value.trim(),username:name.value.trim().toLowerCase(),bio:bio.value.trim(),pronouns:pronouns.value.trim(),presence_activity:activity.value.trim(),avatar_color:color.value,avatar_url:avatarUrl,banner_url:bannerUrl}).eq('id',uid).select('id'));
     if(!updated.length)throw Error('O perfil não pôde ser atualizado. Entre novamente.');saved=true;
     const retired=[prior.avatar_url,prior.banner_url].filter(path=>path?.startsWith('profiles/'+uid+'/')&&!new Set([avatarUrl,bannerUrl]).has(path));if(retired.length){const removed=await db.storage.from('orbita-files').remove([...new Set(retired)]);if(removed.error)toast('Perfil salvo. Não foi possível liberar o espaço das imagens antigas agora.');}
     noise=noiseCheck.checked;localStorage.setItem('orbita-noise',String(noise));
@@ -1806,3 +1811,9 @@ audioTools=initAudioControls({el,button,toast,dialog:showDialog,room:()=>room,no
 callReactions=initCallReactions({el,button,toast,dialog:showDialog,room:()=>room});
 const settingsBeforeAudioDevices=$('settings').onclick;
 $('settings').onclick=()=>{settingsBeforeAudioDevices();audioTools.fields($('dialog-content'));};
+
+initAdminControls({el,button,toast,checked,showDialog,inputField,errorText,apiFetch,
+ state:()=>({db,session,people,siteRoles,activeCommunity,selected}),hasPermission:permission=>hasCommunityPermission(permission),
+ refreshRoles:async()=>{siteRoles=await checked(db.from('site_roles').select('*'));renderMembers();},
+ moderation:()=>enhancements.showModeration(),audit:()=>enhancements.showAudit(),clearDraft:()=>{drafts.set(draftKey(selected),'');resizeComposer();}
+});

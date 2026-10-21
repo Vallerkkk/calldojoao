@@ -121,3 +121,20 @@ A redução de ruído adicional usa RNNoise em WebAssembly/AudioWorklet, com fil
 O seletor de reações oferece 12 emojis, animações com nome do participante, indicação acessível, limite de frequência por pessoa e limpeza ao sair. Reduzir movimento é respeitado. Sons de aviso, entrada/saída e efeitos usam envelopes suaves e compressão, com volumes separados para avisos e soundboard. Aplausos e Pop se juntam aos quatro efeitos anteriores; controles de silêncio e Não perturbe continuam respeitados.
 
 `tests/audio_experience_browser.cjs` executa o RNNoise real com ruído sintético, mede redução do sinal e verifica reinício/limpeza. Testa ainda seleção de dispositivos simulados, retorno após falha, fallback do filtro, saída indisponível, reações remotas e volumes no PC e celular. Nenhum dispositivo físico é aberto pelos testes e nenhum serviço pago foi adicionado.
+
+
+### Nickname, entrada e administração
+
+O cadastro e o editor usam um nickname único de 3–24 letras, números ou sublinhado. O @ é o mesmo nome em minúsculas; por exemplo, VallerJP → @vallerjp. O banco sincroniza o identificador quando o nome muda e rejeita duplicatas. Contas existentes mantêm identificadores personalizados até editarem o perfil; identificadores automáticos foram substituídos somente quando o nome era válido, único e disponível. Nomes não concedem permissões. A entrada mostra uma animação durante o carregamento real da sessão, sem atraso artificial e respeitando reduzir movimento.
+
+Em Configurações → Administração da Órbita, somente contas com cargo de criador podem conceder ou retirar a administração do site. Criadores são protegidos; administradores comuns não podem promover outras pessoas. A função do banco verifica o cargo atual, serializa alterações e registra autor, alvo e ação em site_admin_audit. Não há permissão de escrita direta nas tabelas de cargos ou auditoria.
+
+Comandos no campo de mensagem: /admin, /ajuda, /auditoria, /adm @nickname, /removeradm @nickname, /silenciar @nickname 10 motivo, /liberar @nickname motivo, /banir @nickname motivo e /desbanir @nickname motivo. Comandos são interceptados antes do envio público e ações pedem confirmação. Moderação vale para o servidor aberto e continua validada no servidor. Promoção é global e exclusiva de criadores.
+
+### YouTube como participante da chamada
+
+Ao escolher um vídeo, todos recebem automaticamente um bloco YouTube na grade, junto às câmeras e participantes. Qualquer participante conectado pode reproduzir, pausar, trocar o vídeo e silenciar/liberar o som para todos, inclusive na plateia de um palco. Cada pessoa também possui mute e volume locais. Por padrão o som local começa desligado para respeitar as regras de reprodução automática; Ouvir áudio libera somente o próprio dispositivo. Navegação por canais preserva o player e sair da chamada destrói o iframe e os temporizadores.
+
+Comandos confiáveis do LiveKit usam versão lógica e desempate por identidade para convergir em escolhas simultâneas. Correções periódicas de tempo vêm de uma identidade eleita entre os presentes. Pedidos de estado atendem entradas tardias; dados de fora da sala e pacotes inválidos são ignorados. Não há servidor extra ou serviço pago. Vídeos privados, removidos, restritos pelo autor e bloqueios de reprodução do navegador continuam sujeitos às regras do YouTube; o bloco oferece erro, tentativa novamente e link externo.
+
+Validação: tests/identity_browser.cjs e tests/youtube_watch_browser.cjs cobrem PC/celular com duas contas simuladas. tests/nicknames_admin_access.sql usa transação revertida para testar unicidade, sincronização de nomes, promoção exclusiva do criador, proteção de criadores, revogação, ausência de escrita direta e auditoria sem deixar dados de teste.
