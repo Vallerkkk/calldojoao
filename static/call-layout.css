@@ -1,7 +1,8 @@
 /* Dedicated call canvas. Chat, friends and the feed keep their own layouts. */
-body.call-focus .app{grid-template-columns:minmax(0,1fr)!important;background:#000}
-body.call-focus .main{grid-column:1/-1!important;min-width:0}
-body.call-focus .rail,body.call-focus .sidebar,body.call-focus .members,body.call-focus .creators-credit,body.call-focus #drive-info,body.call-focus #private-call{display:none!important}
+/* call-focus no longer hides sidebar — Discord-style split layout */
+body.call-focus .rail,body.call-focus .sidebar,body.call-focus .members{display:flex!important}
+body.call-focus .app{grid-template-columns:72px 240px minmax(0,1fr) 240px}
+body.call-focus .main{grid-column:3/-1}
 body.call-focus.mobile-menu-open .rail{display:flex!important;position:fixed;inset:0 auto 0 0;width:72px;z-index:61}
 body.call-focus.mobile-menu-open .sidebar{display:flex!important;position:fixed;inset:0 auto 0 72px;width:240px;z-index:60;box-shadow:20px 0 80px #000d}
 #voice-view{position:relative;height:100%;min-height:0;background:#000;color:#f2f3f5;isolation:isolate;overflow:hidden}
@@ -80,3 +81,5 @@ body.call-focus.mobile-menu-open .sidebar{display:flex!important;position:fixed;
 
 body.camera-active #voice-view .voice-controls .vc-btn{min-width:48px;min-height:48px;width:48px;height:48px}
 body.camera-active #voice-view #camera-switch{min-width:88px;width:auto;padding-inline:10px;font-size:12px}
+
+@media(max-width:1080px){body:has(#voice-view:not([hidden])) #members-sidebar{display:none!important}}
