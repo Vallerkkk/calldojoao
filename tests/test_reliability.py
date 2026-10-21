@@ -1,9 +1,11 @@
 import unittest
 import gzip
+import json
 from pathlib import Path
 from unittest.mock import patch
 
 import httpx
+import jwt
 from fastapi.testclient import TestClient
 
 import app
@@ -107,3 +109,22 @@ class ReliabilityTests(unittest.TestCase):
         response = self.client.get('/')
         self.assertEqual(response.headers['x-frame-options'], 'DENY')
         self.assertIn("frame-ancestors 'none'", response.headers['content-security-policy'])
+
+    def test_invalid_optional_profile_metadata_cannot_break_call_tokens(self):
+        for metadata in (None, [], 'invalid', {'display_name': []}, {'display_name': '  '}):
+            with self.subTest(metadata=metadata):
+                token = app.make_token({'id': USER, 'user_metadata': metadata}, 'channel-' + CHANNEL)
+                payload = json.loads(token.body)
+                decoded = jwt.decode(payload['token'], ENV['LIVEKIT_API_SECRET'], algorithms=['HS256'])
+                self.assertEqual(decoded['name'], 'Participante')
+                self.assertEqual(decoded['sub'], USER)
+
+    def test_malformed_private_conversation_is_recoverable_and_never_issues_token(self):
+        async def get(_client, url, **kwargs):
+            if url.endswith('/auth/v1/user'):
+                return httpx.Response(200, json={'id': USER})
+            return httpx.Response(200, json=[{'id': CHANNEL, 'user_a': USER}])
+        with patch.object(httpx.AsyncClient, 'get', get):
+            result = self.client.post('/api/conversations/' + CHANNEL + '/join', headers={'Authorization': 'Bearer test'})
+        self.assertEqual(result.status_code, 503)
+        self.assertNotIn('token', result.json())

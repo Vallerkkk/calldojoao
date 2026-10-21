@@ -133,8 +133,9 @@ def make_token(user, room_name, can_publish=True, stage=False, moderator=False):
     s = settings()
     if not all(s[k] for k in ('LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET')):
         raise HTTPException(503, 'As chamadas ainda não foram configuradas.')
-    metadata = user.get('user_metadata') or {}
-    name = str(metadata.get('display_name') or 'Participante')[:50]
+    metadata = user.get('user_metadata')
+    name = metadata.get('display_name') if isinstance(metadata, dict) else None
+    name = name.strip()[:50] if isinstance(name, str) and name.strip() else 'Participante'
     token = (api.AccessToken(s['LIVEKIT_API_KEY'], s['LIVEKIT_API_SECRET'])
         .with_identity(user['id']).with_name(name).with_ttl(timedelta(minutes=10))
         .with_grants(api.VideoGrants(room_join=True, room=room_name,

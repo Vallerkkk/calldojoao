@@ -1,6 +1,6 @@
 import { relativeTime, safeLink, stickerNames, youtubeId, youtubeStart } from './media-utils.js?v=youtube-20261020-1';
 import { reserveImage, focusElement } from './dom-utils.js?v=fluency-20261020-2';
-import { requestWithDeadline } from './chat-state.js?v=fluency-20261020-2';
+import { requestWithDeadline } from './chat-state.js?v=review-20261021-1';
 import { requestAppInstall } from './app-install.js?v=launcher-20261020-1';
 
 export function initEnhancements(context) {

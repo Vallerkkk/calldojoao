@@ -27,6 +27,8 @@ def install(app, current_user, settings, make_token):
             raise HTTPException(404, 'Espaço inexistente ou sem acesso.')
         if kind == 'direct':
             convo = found[0]
+            if not all(isinstance(convo.get(key), str) and convo[key] for key in ('user_a', 'user_b')):
+                raise HTTPException(503, 'O serviço de dados retornou uma conversa inválida.')
             if user['id'] not in (convo['user_a'], convo['user_b']):
                 raise HTTPException(404, 'Conversa sem acesso.')
             friends = await rows('friendships', headers, {'status': 'eq.accepted', 'or': f'(and(requester_id.eq.{convo["user_a"]},recipient_id.eq.{convo["user_b"]}),and(requester_id.eq.{convo["user_b"]},recipient_id.eq.{convo["user_a"]}))', 'select': 'id'})

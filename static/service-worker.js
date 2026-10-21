@@ -1,5 +1,19 @@
-const CACHE = 'orbita-shell-20261020-launcher-1';
+const CACHE = 'orbita-shell-20261021-review-1';
 const SHELL = ['/static/offline.html', '/static/icons/icon-192.png', '/static/icons/icon-512.png'];
+const MAX_ASSETS = 80;
+let cacheWrites = Promise.resolve();
+function remember(request, response) {
+  // Serialize pruning so concurrent downloads cannot exceed the cache budget.
+  cacheWrites=cacheWrites.catch(()=>{}).then(async()=>{
+    const cache=await caches.open(CACHE),url=new URL(request.url);
+    const keys=await cache.keys();
+    await Promise.all(keys.filter(key=>new URL(key.url).pathname===url.pathname&&key.url!==url.href).map(key=>cache.delete(key)));
+    await cache.put(request,response);
+    const assets=(await cache.keys()).filter(key=>!SHELL.includes(new URL(key.url).pathname));
+    await Promise.all(assets.slice(0,Math.max(0,assets.length-MAX_ASSETS)).map(key=>cache.delete(key)));
+  });
+  return cacheWrites.catch(()=>{}); // Quota failures must never break navigation.
+}
 self.addEventListener('install', event => { event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL))); });
 self.addEventListener('activate', event => { event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('orbita-shell-') && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim())); });
 self.addEventListener('message', event => { if (event.data?.type === 'SKIP_WAITING') self.skipWaiting(); });
@@ -8,8 +22,9 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
   if (event.request.mode === 'navigate') { event.respondWith(fetch(event.request).catch(() => caches.match('/static/offline.html'))); return; }
   // Never cache private data, signed URLs, uploads or third-party requests.
-  if (!url.pathname.startsWith('/static/')) return;
-  event.respondWith(fetch(event.request).then(response => { if (response.ok) { const copy = response.clone(); event.waitUntil(caches.open(CACHE).then(cache => cache.put(event.request, copy))); } return response; }).catch(() => caches.match(event.request)));
+  const asset=/^\/static\/[^/]+\.(?:js|css)$/.test(url.pathname)||/^\/static\/(?:icons|assets|stickers)\/[^/]+\.(?:png|svg|webp|ico)$/.test(url.pathname)||SHELL.includes(url.pathname);
+  if(!asset||event.request.headers.has('range')||event.request.cache==='no-store')return;
+  event.respondWith(fetch(event.request).then(response => { if (response.status===200&&!response.headers.get('cache-control')?.includes('no-store')) event.waitUntil(remember(event.request,response.clone())); return response; }).catch(async()=>await caches.match(event.request)||Response.error()));
 });
 self.addEventListener('push', event => {
   let data = {}; try { data = event.data?.json() || {}; } catch {}

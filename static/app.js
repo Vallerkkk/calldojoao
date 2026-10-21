@@ -2,9 +2,9 @@ import { initCommunityUX } from './community-ux.js?v=community-20261021-1';
 import { initCallLayout } from './call-layout.js?v=jesus9-20261021-1';
 import { initSocialFeed } from './social-feed.js?v=jesus9-20261021-1';
 import { compressImage, relativeTime, safeLink, stickerNames } from './media-utils.js?v=fluency-20261020-2';
-import { initEnhancements } from './enhancements.js?v=devices-20261020-1';
+import { initEnhancements } from './enhancements.js?v=review-20261021-1';
 import { DraftStore, serialToggle } from './runtime-utils.js?v=fluency-20261020-2';
-import { ConversationCache, MessageOutbox, conversationKey, requestWithDeadline } from './chat-state.js?v=fluency-20261020-2';
+import { ConversationCache, MessageOutbox, conversationKey, requestWithDeadline } from './chat-state.js?v=review-20261021-1';
 import { reconcileNodes, reserveImage, focusElement } from './dom-utils.js?v=fluency-20261020-2';
 import { choosePrivateCall } from './private-call-menu.js?v=videochamada-20261020-1';
 let enhancements, feed, callLayout, communityUX;
@@ -19,7 +19,8 @@ function updateComposer() { $('send').disabled=!navigator.onLine||pendingSends.h
 const $ = id => document.getElementById(id);
 let db, config, session, channels = [], selected, signup = false;
 let subscription, generation = 0, messages = new Map(), oldest, hasMore = false, loading = false;
-let room, callChannel, joining = false, shuttingDown = false;
+let room, callChannel, joining = false, shuttingDown = false, callJoin;
+function cancelCallJoin() { callJoin?.abort(); callJoin=null; joining=false; }
 let cameraFacing=localStorage.getItem('orbita-camera-facing')==='environment'?'environment':'user',cameraTask;
 const cameraTrackFacing=new WeakMap();
 const mobileCamera=()=>matchMedia('(max-width:780px), (pointer:coarse)').matches;
@@ -100,6 +101,7 @@ $('auth-form').onsubmit = async event => {
 let sessionTransition=0,sessionReady=false,sessionInitializing=false;
 async function showSession(next) {
   if(session?.user.id===next?.user.id&&next&&(sessionReady||sessionInitializing)){session=next;return;}
+  cancelCallJoin();
   feed?.sessionChanged();
   sessionInitializing=!!next;sessionReady=false;sessionRecovery.hidden=true;
   const previousUser=session?.user.id,transition=++sessionTransition;
@@ -130,9 +132,12 @@ async function showSession(next) {
     // Cria o vínculo padrão antes da primeira consulta de canais protegida por RLS.
     await initSocial();
     if (!session || session.user.id !== next.user.id||transition!==sessionTransition) return;
-    channels = await checked(db.from('channels').select('*').order('position'));
+    const loadedChannels = await checked(db.from('channels').select('*').order('position'));
+    if(transition!==sessionTransition||session?.user.id!==next.user.id)return;channels=loadedChannels;
     if (!channels.length) {renderCommunityRail();showFriends();sessionReady=true;await enhancements.sessionChanged();return;}
-    renderChannels();await loadCommunityAccess();await selectChannel(channels.find(c => c.community_id===activeCommunity&&c.default_for_new_members&&c.kind==='text')||channels.find(c => c.community_id===activeCommunity&&c.kind === 'text') || channels.find(c=>c.community_id===activeCommunity) || channels[0]);
+    renderChannels();await loadCommunityAccess();
+    if(transition!==sessionTransition||session?.user.id!==next.user.id)return;
+    await selectChannel(channels.find(c => c.community_id===activeCommunity&&c.default_for_new_members&&c.kind==='text')||channels.find(c => c.community_id===activeCommunity&&c.kind === 'text') || channels.find(c=>c.community_id===activeCommunity) || channels[0]);
     if(transition===sessionTransition)sessionReady=true;
   }catch(error){if(transition===sessionTransition){toast('Não foi possível carregar a comunidade: '+errorText(error));sessionRecovery.hidden=false;}}
   finally{if(transition===sessionTransition)sessionInitializing=false;}
@@ -583,7 +588,8 @@ function updateSpeakingUI() {
   for(const card of participantCards.values())card.classList.toggle('speaking',speaking.has(card.dataset.participantId));
   for(const entry of callMedia.values())if(entry.tile)entry.tile.classList.toggle('speaking',speaking.has(entry.participantId));
 }
-async function leaveCall() {
+async function leaveCall({preserveJoin=false}={}) {
+  if(!preserveJoin)cancelCallJoin();
   cameraTask=null;const previous = room;if(previous)microphoneSwitch.set(previous.localParticipant,false);room = null;callChannel = null;talkHeld=false;
   enhancements?.callEnded(previous);
   if (previous) previous.removeAllListeners();
@@ -594,17 +600,25 @@ async function leaveCall() {
 }
 $('join-call').onclick = async () => {
   if (joining || !session || selected?.kind !== 'voice') return;
-  joining = true; updateCallUI(); const target = selected;
+  const operation=new AbortController(),account=session.user.id,target={...selected};callJoin=operation;
+  const current=()=>callJoin===operation&&!operation.signal.aborted&&session?.user.id===account&&!shuttingDown;
+  joining = true; updateCallUI(); let connected;
   try {
     const {data: {session: fresh}} = await db.auth.getSession();
-    if (!fresh) throw Error('Sua sessão expirou. Entre novamente.');
-    const response = await fetch(`/api/${target.private?'conversations':'channels'}/${target.id}/join`, {method:'POST', headers:{Authorization:`Bearer ${fresh.access_token}`}});
-    const result = await response.json(); if (!response.ok) throw Error(result.detail || 'Não foi possível entrar.');
-    const {Room, RoomEvent, VideoPresets, ScreenSharePresets} = await import('https://cdn.jsdelivr.net/npm/livekit-client@2.15.6/+esm');
-    if (!session || shuttingDown) return;
-    await leaveCall();
+    if(!current())return;
+    if (!fresh || fresh.user.id!==account) throw Error('Sua sessão expirou. Entre novamente.');
+    const result=await requestWithDeadline(async signal=>{
+      const response=await fetch(`/api/${target.private?'conversations':'channels'}/${target.id}/join`,{method:'POST',headers:{Authorization:`Bearer ${fresh.access_token}`},signal});
+      const data=await response.json().catch(()=>{throw Error('O servidor não respondeu corretamente. Tente novamente.');});
+      if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'Não foi possível entrar.');return data;
+    },{signal:operation.signal,timeout:30000});
+    if(!current())return;
+    const {Room, RoomEvent, VideoPresets, ScreenSharePresets} = await requestWithDeadline(()=>import('https://cdn.jsdelivr.net/npm/livekit-client@2.15.6/+esm'),{signal:operation.signal,timeout:30000});
+    if (!current()) return;
+    await leaveCall({preserveJoin:true});
+    if(!current())return;
     const media=mediaSettings();
-    const connected = new Room({
+    connected = new Room({
       adaptiveStream: {pixelDensity:'screen'},
       dynacast:true,
       webAudioMix:typeof (window.AudioContext||window.webkitAudioContext)==='function',
@@ -636,13 +650,15 @@ $('join-call').onclick = async () => {
     connected.on(RoomEvent.Reconnected, updateCallUI);
     connected.on(RoomEvent.Disconnected, () => { if (room === connected) { leaveCall(); toast('Você saiu da chamada.'); } });
     await connected.connect(result.url, result.token);
-    if (!session || room !== connected) { await connected.disconnect(); return; }
+    if (!current() || room !== connected) { await connected.disconnect(); return; }
     try { await connected.startAudio(); } catch { toast('A chamada entrou. Toque na tela para liberar o áudio neste navegador.'); }
+    if(!current()||room!==connected){await connected.disconnect();return;}
     enhancements.connected(connected,RoomEvent,result);
     try { if(result.canPublish!==false)await connected.localParticipant.setMicrophoneEnabled(!pushToTalk&&!deafened, audioCapture()); }
     catch (error) { toast('Você entrou sem microfone. ' + errorText(error)); }
-  } catch (error) { await leaveCall(); toast(errorText(error)); }
-  finally { joining = false; updateCallUI(); }
+    if(!current()||room!==connected)await connected.disconnect();
+  } catch (error) { if(current()){if(room===connected)await leaveCall({preserveJoin:true});toast(errorText(error));} }
+  finally { if(callJoin===operation){callJoin=null;joining=false;updateCallUI();} }
 };
 $('leave-call').onclick = () => leaveCall();
 if(!canShareScreen){$('screen').disabled=true;$('screen').title='Este navegador não suporta compartilhar a tela';}
@@ -706,8 +722,8 @@ facingSelect.onchange=async()=>{
 };
 window.addEventListener('resize',updateCameraControl);
 document.addEventListener('pointerdown',()=>{const current=room;if(current?.state==='connected'&&current.canPlaybackAudio===false)current.startAudio().then(()=>{if(room===current)syncRemoteVolumes();}).catch(()=>{});},{passive:true});
-window.addEventListener('pagehide', () => { shuttingDown = true;if(presenceChannel)presenceChannel.untrack(); if (room) room.disconnect(); });
-window.addEventListener('pageshow', () => { shuttingDown = false; });
+window.addEventListener('pagehide', () => { shuttingDown = true;cancelCallJoin();if(presenceChannel)presenceChannel.untrack();leaveCall().catch(()=>{}); });
+window.addEventListener('pageshow', event => { shuttingDown = false;if(event.persisted&&session){publishVoicePresence(true).catch(()=>{});if(!home&&selected?.kind==='text'){subscribeMessages(selected,generation);loadMessages(generation,true);}} });
 
 const startupRetry=el('button','soft-button','Tentar novamente');startupRetry.type='button';startupRetry.hidden=true;startupRetry.onclick=()=>boot();$('auth-status').after(startupRetry);
 const sessionRecovery=el('div','session-recovery');sessionRecovery.hidden=true;sessionRecovery.setAttribute('role','status');sessionRecovery.append(el('p','','Não foi possível carregar sua comunidade.'),button('Tentar carregar novamente',()=>showSession(session)));document.body.append(sessionRecovery);
@@ -716,9 +732,9 @@ window.addEventListener('online',()=>{if(!startupRetry.hidden)boot();});
 async function boot() {
   if(booting)return;booting=true;startupRetry.hidden=true;$('auth-status').textContent='';
   try {
-    const response=await fetch('/api/config');if(!response.ok)throw Error('O servidor está indisponível. Aguarde e tente novamente.');config=await response.json();
+    config=await requestWithDeadline(async signal=>{const response=await fetch('/api/config',{signal});if(!response.ok)throw Error('O servidor está indisponível. Aguarde e tente novamente.');return response.json();},{timeout:30000});
     if (!config.configured) { $('setup').hidden = false; $('auth-submit').disabled = true; return; }
-    const {createClient} = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/+esm');
+    const {createClient} = await requestWithDeadline(()=>import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/+esm'),{timeout:30000});
     if(!db){db=createClient(config.supabaseUrl,config.supabaseKey);
     // Supabase calls run outside the Auth callback to avoid locking the session.
     db.auth.onAuthStateChange((_event,next)=>{setTimeout(()=>showSession(next).catch(error=>toast(errorText(error))),0);});}
@@ -752,7 +768,7 @@ async function checked(query) { const result=await query; if(result.error) throw
 async function apiFetch(path, options={}) {
   const {data:{session:fresh}}=await db.auth.getSession();
   if(!fresh) throw Error('Entre novamente na sua conta.');
-  const response=await fetch(path,{...options,headers:{...options.headers,Authorization:`Bearer ${fresh.access_token}`}});
+  const response=await requestWithDeadline(signal=>fetch(path,{...options,signal,headers:{...options.headers,Authorization:`Bearer ${fresh.access_token}`}}),{signal:options.signal,timeout:30000});
   if(!response.ok) {const error=await response.json().catch(()=>({}));throw Error(error.detail||'Não foi possível concluir.');}
   return response;
 }
@@ -813,9 +829,12 @@ async function hydrateProfileMedia(){
 }
 function setAvatar(node,p){node.dataset.userId=p?.id||'';node.textContent=initials(p?.display_name);node.style.backgroundColor=p?.avatar_color||'#8b80ff';node.style.backgroundImage=p?.avatar_src?`url("${p.avatar_src.replaceAll('"','%22')}")`:'';node.classList.toggle('has-photo',!!p?.avatar_src);}
 async function initSocial() {
+  const transition=sessionTransition,uid=session?.user.id,current=()=>sessionTransition===transition&&session?.user.id===uid;
   await loadSocial();
+  if(!current())return;
   if(socialSubscription) await db.removeChannel(socialSubscription);
-  socialSubscription=db.channel('social-'+session.user.id)
+  if(!current())return;
+  socialSubscription=db.channel('social-'+uid)
     .on('postgres_changes',{event:'*',schema:'public',table:'friendships'},()=>loadSocial().catch(e=>toast(errorText(e))))
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'conversations'},()=>loadSocial().catch(e=>toast(errorText(e))))
     .on('postgres_changes',{event:'*',schema:'public',table:'profiles'},()=>loadSocial().catch(e=>toast(errorText(e))))
@@ -828,7 +847,8 @@ async function initSocial() {
     .on('postgres_changes',{event:'*',schema:'public',table:'reactions'},()=>{if(!home&&selected?.kind==='text')refreshMessages();})
     .subscribe();
   if(presenceChannel) await db.removeChannel(presenceChannel);
-  presenceChannel=db.channel('community:main',{config:{private:true,presence:{key:session.user.id}}});
+  if(!current())return;
+  presenceChannel=db.channel('community:main',{config:{private:true,presence:{key:uid}}});
   presenceChannel.on('presence',{event:'sync'},()=>{publicVoicePresence=Object.entries(presenceChannel.presenceState()).flatMap(([id,metas])=>metas.map(meta=>({...meta,id})));online=new Set(Object.keys(presenceChannel.presenceState()));renderMembers();renderChannels();if(home)renderFriends();});
   presenceChannel.subscribe(async status=>{if(status==='SUBSCRIBED')await publishVoicePresence(true);});
 }
@@ -1148,16 +1168,20 @@ async function resolveAttachmentUrl(attachment){
 
 const baseInitSocial=initSocial;
 initSocial=async()=>{
+  const transition=sessionTransition,uid=session?.user.id,current=()=>sessionTransition===transition&&session?.user.id===uid;
   await checked(db.rpc('ensure_default_community'));
+  if(!current())return;
   const params=new URLSearchParams(location.search),invite=params.get('invite')||localStorage.getItem('orbita-pending-invite');
-  if(invite){try{const {data,error}=await db.rpc('join_community_invite',{invitation:invite});if(error)throw error;activeCommunity=data;localStorage.removeItem('orbita-pending-invite');params.delete('invite');history.replaceState(null,'',location.pathname+(params.size?'?'+params:'')+location.hash);toast('Você entrou na comunidade pelo convite.');}catch(error){localStorage.setItem('orbita-pending-invite',invite);toast(errorText(error));}}
-  [communities,siteRoles]=await Promise.all([checked(db.from('communities').select('*').order('created_at')),checked(db.from('site_roles').select('*'))]);
-  if(!communities.some(c=>c.id===activeCommunity))activeCommunity=await checked(db.rpc('ensure_default_community'));
-  await baseInitSocial();renderCommunityRail();updateFounders();
+  if(invite){try{const {data,error}=await db.rpc('join_community_invite',{invitation:invite});if(!current())return;if(error)throw error;activeCommunity=data;localStorage.removeItem('orbita-pending-invite');params.delete('invite');history.replaceState(null,'',location.pathname+(params.size?'?'+params:'')+location.hash);toast('Você entrou na comunidade pelo convite.');}catch(error){localStorage.setItem('orbita-pending-invite',invite);toast(errorText(error));}}
+  const loaded=await Promise.all([checked(db.from('communities').select('*').order('created_at')),checked(db.from('site_roles').select('*'))]);
+  if(!current())return;[communities,siteRoles]=loaded;
+  if(!communities.some(c=>c.id===activeCommunity)){const fallback=await checked(db.rpc('ensure_default_community'));if(!current())return;activeCommunity=fallback;}
+  if(!current())return;await baseInitSocial();if(!current())return;renderCommunityRail();updateFounders();
   if(extraSubscription)await db.removeChannel(extraSubscription);
+  if(!current())return;
   extraSubscription=db.channel('orbita-ui-'+session.user.id)
-    .on('postgres_changes',{event:'*',schema:'public',table:'communities'},async()=>{communities=await checked(db.from('communities').select('*').order('created_at'));renderCommunityRail();})
-    .on('postgres_changes',{event:'*',schema:'public',table:'site_roles'},async()=>{siteRoles=await checked(db.from('site_roles').select('*'));renderMembers();updateFounders();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'communities'},async()=>{try{const loaded=await checked(db.from('communities').select('*').order('created_at'));if(!current())return;communities=loaded;renderCommunityRail();}catch(error){if(current())toast(errorText(error));}})
+    .on('postgres_changes',{event:'*',schema:'public',table:'site_roles'},async()=>{try{const loaded=await checked(db.from('site_roles').select('*'));if(!current())return;siteRoles=loaded;renderMembers();updateFounders();}catch(error){if(current())toast(errorText(error));}})
     .on('postgres_changes',{event:'*',schema:'public',table:'poll_votes'},()=>{if(!home&&selected?.kind==='text')refreshMessages();}).subscribe();
   if(new URLSearchParams(location.hash.slice(1)).has('convite'))toast('Entre na conta de Kalil e abra Configurações → Aceitar convite de criador.');
   $('banner-title').textContent='Sua comunidade';

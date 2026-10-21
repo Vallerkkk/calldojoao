@@ -47,6 +47,29 @@ test('outbox has a fixed bound and keeps failed messages available', () => {
   const box = new MessageOutbox(1), target = {id: 'room'}; box.add('alice', target, 'texto', null).status = 'error';
   assert.equal(box.rows('alice', target)[0].content, 'texto'); assert.throws(() => box.add('alice', target, 'mais', null));
 });
+
+test('an earlier identical message cannot acknowledge a new pending send', () => {
+  const box=new MessageOutbox(),target={id:'room'},pending=box.add('alice',target,'oi',null);
+  pending.knownIds=new Set(['earlier']);
+  const message={id:'earlier',author_id:'alice',content:'oi',created_at:pending.created_at};
+  assert.equal(box.observe('alice',target,message),undefined);
+  assert.equal(box.rows('alice',target).length,1);
+  assert.equal(box.observe('alice',target,{...message,id:'new'}),pending);
+});
+
+test('a cancelled request never starts its query or fetch factory', async () => {
+  const controller=new AbortController();controller.abort();let started=false;
+  await assert.rejects(requestWithDeadline(()=>{started=true;},{signal:controller.signal}),{name:'AbortError'});
+  assert.equal(started,false);
+});
+
+test('factories receive cancellation and synchronous failures clean up', async () => {
+  let signal;
+  await assert.rejects(requestWithDeadline(value=>{signal=value;return new Promise(()=>{});},{timeout:10}),{name:'TimeoutError'});
+  assert.equal(signal.aborted,true);
+  await assert.rejects(requestWithDeadline(()=>{throw Error('query failed');}),/query failed/);
+  assert.equal(await requestWithDeadline(()=>Promise.resolve('recovered')),'recovered');
+});
 test('read deadline releases a request that never settles', async () => {
   let signal;
   const query = {abortSignal(value) { signal = value; return new Promise(() => {}); }};

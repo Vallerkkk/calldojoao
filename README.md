@@ -81,3 +81,14 @@ O chat mostra separadores de dias, horários das mensagens agrupadas ao passar o
 Cada vídeo pode ser destacado na chamada e devolvido à grade sem substituir a faixa de mídia. O destaque é local e termina se a transmissão sair. Os volumes independentes, câmera frontal/traseira, Picture-in-Picture, Big Picture, perfis, feed e controles existentes continuam disponíveis. O refinamento visual usa recursos do próprio navegador, sem novos serviços ou dependências.
 
 Validação: tests/community_ux_browser.cjs cobre PC e celular, busca/DMs/teclado, categorias, separadores, ações contextuais e suas permissões, confirmação de exclusão, envio pelo botão visível, atalhos de chamada, destaque/limpeza, tema claro e troca de conta. As suítes de navegação, feed, preferências e layout de chamadas verificam regressões com contas e mídia simuladas.
+
+
+### Revisão de estabilidade de 21/10/2026
+
+Entradas em chamada têm uma operação cancelável vinculada à conta. Trocar de conta, sair ou abandonar a página cancela a entrada pendente; respostas antigas não abrem o microfone nem encerram uma chamada nova. A verificação se repete após conectar e liberar a reprodução de áudio. Uma falha ao pedir a nova sala preserva a chamada atual. Voltar pelo histórico limpa a interface de captura e restaura presença e mensagens, sem religar o microfone automaticamente.
+
+A configuração inicial, as solicitações da aplicação e a autorização da chamada têm limite de espera de 30 segundos e retornam controles utilizáveis para tentar novamente. Leituras canceladas não iniciam consultas. Inicializações antigas deixam de atualizar canais e assinaturas de outra conta. A confirmação da caixa de saída ignora mensagens que já estavam carregadas antes do envio, mesmo quando têm texto e horário semelhantes.
+
+O service worker guarda somente recursos estáticos da interface e ícones, com até 80 recursos além da tela offline e seus ícones. Substitui versões antigas do mesmo caminho e ignora instaladores, intervalos de arquivos, APIs e solicitações sem cache. Falhas de quota não interrompem respostas da rede. Metadados opcionais inválidos de perfil não quebram a emissão de tokens; uma conversa privada incompleta falha com resposta recuperável e sem liberar acesso.
+
+Regressões: `tests/call_session_browser.cjs` cobre tokens atrasados, troca de conta durante a liberação do áudio, nova tentativa após erro e retorno pelo histórico no PC e celular. `tests/service-worker.test.mjs`, `tests/chat-state.test.mjs` e `tests/test_reliability.py` verificam limites do cache, cancelamento, confirmação de envios e respostas incompletas do provedor. Nenhuma migração, dependência ou serviço pago foi adicionado.
