@@ -1,6 +1,6 @@
 import { initSocialFeed } from './social-feed.js?v=feed-20261020-2';
 import { compressImage, relativeTime, safeLink, stickerNames } from './media-utils.js?v=fluency-20261020-2';
-import { initEnhancements } from './enhancements.js?v=youtube-20261020-1';
+import { initEnhancements } from './enhancements.js?v=devices-20261020-1';
 import { DraftStore, serialToggle } from './runtime-utils.js?v=fluency-20261020-2';
 import { ConversationCache, MessageOutbox, conversationKey, requestWithDeadline } from './chat-state.js?v=fluency-20261020-2';
 import { reconcileNodes, reserveImage, focusElement } from './dom-utils.js?v=fluency-20261020-2';
@@ -18,6 +18,9 @@ const $ = id => document.getElementById(id);
 let db, config, session, channels = [], selected, signup = false;
 let subscription, generation = 0, messages = new Map(), oldest, hasMore = false, loading = false;
 let room, callChannel, joining = false, shuttingDown = false;
+let cameraFacing=localStorage.getItem('orbita-camera-facing')==='environment'?'environment':'user',cameraTask;
+const cameraTrackFacing=new WeakMap();
+const mobileCamera=()=>matchMedia('(max-width:780px), (pointer:coarse)').matches;
 let pushToTalk=localStorage.getItem('orbita-push-to-talk')==='true',talkHeld=false,pttButton;
 // Metas de qualidade: o navegador e o LiveKit podem reduzir conforme o dispositivo e a rede.
 const canShareScreen = typeof navigator.mediaDevices?.getDisplayMedia === 'function';
@@ -38,7 +41,7 @@ function mediaSettings(){
       : {camera:[1280,720,30,2_500_000],screen:[1920,1080,30,4_000_000]};
   const [cw,ch,cf,cb]=profile.camera,[sw,sh,sf,sb]=profile.screen;
   return {
-    cameraCapture:{resolution:{width:cw,height:ch,frameRate:cf}},
+    cameraCapture:{resolution:{width:cw,height:ch,frameRate:cf},facingMode:mobileCamera()?{exact:cameraFacing}:{ideal:cameraFacing}},
     cameraPublish:{videoEncoding:{maxBitrate:cb,maxFramerate:cf},degradationPreference:'balanced'},
     screenCapture:{resolution:{width:sw,height:sh,frameRate:sf},contentHint:'detail',audio:screenAudio,systemAudio:screenAudio?'include':'exclude',surfaceSwitching:'include'},
     screenPublish:{screenShareEncoding:{maxBitrate:sb,maxFramerate:sf},degradationPreference:'maintain-resolution'},
@@ -436,7 +439,33 @@ $('message-form').onsubmit = event => {
 };
 
 
+function audioSource(source){return source==='screen_share_audio'?'screen_share_audio':'microphone';}
+function sourceVolume(identity,source){
+  const key='orbita-volume-'+identity+(source==='screen_share_audio'?'-screen':''),stored=localStorage.getItem(key);
+  if(stored===null)return 1;const value=Number(stored);return Number.isFinite(value)?Math.max(0,Math.min(1,value)):1;
+}
+function applyRemoteVolume(entry){
+  const volume=deafened?0:sourceVolume(entry.participantId,entry.source);
+  // The SDK controls its gain node when Web Audio mixing is enabled (including iOS).
+  // Do not unmute or raise the SDK's silent HTML element and create a second audio path.
+  if(typeof entry.track.setVolume==='function')entry.track.setVolume(volume);
+  else{entry.media.volume=volume;entry.media.muted=deafened;}
+}
+function syncRemoteVolumes(){for(const entry of callMedia.values())if(entry.track.kind==='audio')applyRemoteVolume(entry);}
+function syncLocalCameraPreview(){
+  for(const entry of callMedia.values())if(entry.track.kind==='video'&&entry.source==='camera'&&entry.participantId===room?.localParticipant.identity){
+    const facing=entry.track.mediaStreamTrack?.getSettings?.().facingMode||cameraFacing;
+    entry.media.classList.toggle('camera-mirrored',facing==='user');
+  }
+}
+function volumeControl(participant,source,label){
+  const field=el('label','participant-volume'),caption=el('span','',label),slider=el('input'),value=el('output');
+  field.dataset.audioSource=source;slider.type='range';slider.min='0';slider.max='1';slider.step='0.01';slider.dataset.audioSource=source;slider.id='volume-'+source+'-'+participant.identity;value.htmlFor=slider.id;
+  slider.oninput=()=>{localStorage.setItem('orbita-volume-'+participant.identity+(source==='screen_share_audio'?'-screen':''),slider.value);value.value=Math.round(Number(slider.value)*100)+'%';for(const entry of callMedia.values())if(entry.participantId===participant.identity&&entry.source===source&&entry.track.kind==='audio')applyRemoteVolume(entry);};
+  field.append(caption,slider,value);return field;
+}
 const callMedia = new Map();
+
 function disposeMedia(entry) {
   if (callMedia.get(entry.key) !== entry) return;
   callMedia.delete(entry.key);
@@ -454,19 +483,20 @@ function syncCallMedia() {
 }
 function onTrack(track, participant, publication) {
   const source = publication?.source || track.source || (track.kind === 'video' ? 'camera' : 'microphone');
-  const key = JSON.stringify([participant.identity, source]);
+  const key = JSON.stringify([participant.identity, track.kind==='audio'?audioSource(source):source]);
   const previous = callMedia.get(key);
-  if (previous?.track === track) { previous.publication = publication || previous.publication; syncCallMedia(); return; }
+  if (previous?.track === track) { previous.publication = publication || previous.publication;if(track.kind==='audio')applyRemoteVolume(previous);syncCallMedia();return; }
   if (previous) disposeMedia(previous);
   const media = track.attach(), sid = publication?.trackSid || track.sid;
   if (sid) media.dataset.track = sid;
-  const entry = {key, track, media, publication, participantId:participant.identity, cleanups:[]};
+  const entry = {key, track, media, publication, participantId:participant.identity,source:track.kind==='audio'?audioSource(source):source, cleanups:[]};
   callMedia.set(key, entry);
   const ended = () => disposeMedia(entry);
   if (track.on) { track.on('ended', ended); entry.cleanups.push(() => track.off?.('ended', ended)); }
 
   if (track.kind === 'video') {
     const isScreen = source === 'screen_share';
+    if(participant.isLocal&&!isScreen&&!cameraTrackFacing.has(track))cameraTrackFacing.set(track,track.mediaStreamTrack?.getSettings?.().facingMode||cameraFacing);
     const figure = el('figure', 'media-tile' + (isScreen ? ' media-screen' : '')); if(sid)figure.dataset.track=sid;figure.dataset.participantId=participant.identity;entry.tile=figure;
     media.muted = true; media.playsInline = true;
     const caption = el('figcaption');
@@ -489,8 +519,8 @@ function onTrack(track, participant, publication) {
     for(const [event,handler] of [['loadeddata',ready],['playing',ready],['waiting',waiting],['emptied',waiting],['error',failed]]) {media.addEventListener(event,handler);entry.cleanups.push(()=>media.removeEventListener(event,handler));}
     figure.classList.add('media-loading');frame.append(media,status);figure.append(frame,caption);
     $('media-grid').append(figure);if(media.readyState>=2)ready();
-  } else { media.dataset.remoteAudio = 'true';media.dataset.participantId=participant.identity;media.muted=deafened;media.volume=Number(localStorage.getItem('orbita-volume-'+participant.identity)||'1');document.body.append(media); }
-  syncCallMedia();
+  } else { media.dataset.remoteAudio = 'true';media.dataset.participantId=participant.identity;media.dataset.audioSource=entry.source;document.body.append(media);applyRemoteVolume(entry); }
+  syncCallMedia();syncLocalCameraPreview();
 }
 function removeTrack(track, publication, participant) {
   const sid=publication?.trackSid || track?.sid;
@@ -504,7 +534,7 @@ function removeTrack(track, publication, participant) {
 function qualityText(quality){return ({excellent:'Ótima conexão',good:'Boa conexão',poor:'Conexão instável',unknown:'Conectando'})[String(quality||'unknown').toLowerCase()]||'Conectando';}
 const participantCards=new Map();let participantRoom;
 function updateCallUI() {
-  syncCallMedia();
+  syncCallMedia();syncRemoteVolumes();
   const here = !!room && callChannel?.id === selected?.id && selected?.kind === 'voice';
   $('call-dock').hidden=!room;$('dock-name').textContent=callChannel?.name||'';$('call-dock').querySelector('.vb-ping').textContent=here?qualityText(room.localParticipant.connectionQuality):'Conectado';
   $('join-call').hidden = here; $('join-call').disabled = joining || !config?.callsConfigured;
@@ -522,10 +552,14 @@ function updateCallUI() {
     for (const participant of participants) {
       let card=participantCards.get(participant.identity);
       if(!card){card=el('div','participant');card.dataset.participantId=participant.identity;card.append(el('span','avatar'),el('strong','participant-name'),el('small','participant-status'));
-        if(!participant.isLocal){const volume=el('label','participant-volume','Volume'),slider=el('input');slider.type='range';slider.min='0';slider.max='1';slider.step='0.05';slider.oninput=()=>{localStorage.setItem('orbita-volume-'+participant.identity,slider.value);document.querySelectorAll(`[data-remote-audio][data-participant-id="${CSS.escape(participant.identity)}"]`).forEach(audio=>audio.volume=Number(slider.value));};volume.append(slider);card.append(volume);}participantCards.set(participant.identity,card);}
+        if(!participant.isLocal)card.append(volumeControl(participant,'microphone','Microfone'),volumeControl(participant,'screen_share_audio','Transmissão'));participantCards.set(participant.identity,card);}
       card.classList.toggle('speaking',!!participant.isSpeaking);const name=participant.name||'Participante';card.querySelector('.avatar').textContent=initials(name);card.querySelector('.participant-name').textContent=name;
       card.querySelector('.participant-status').textContent=`${participant.isMicrophoneEnabled?'Microfone ligado':'Microfone desligado'} · ${qualityText(participant.connectionQuality)}`;
-      const slider=card.querySelector('input');if(slider){slider.setAttribute('aria-label','Volume de '+name);if(document.activeElement!==slider)slider.value=localStorage.getItem('orbita-volume-'+participant.identity)||'1';}
+      for(const slider of card.querySelectorAll('input[data-audio-source]')){
+        const source=slider.dataset.audioSource;slider.setAttribute('aria-label',(source==='microphone'?'Volume do microfone de ':'Volume da transmissão de ')+name);
+        if(document.activeElement!==slider)slider.value=sourceVolume(participant.identity,source);
+        slider.closest('label').querySelector('output').value=Math.round(Number(slider.value)*100)+'%';
+      }
       participantNodes.push(card);
     }
     for (const [id, enabled] of [['mic',room.localParticipant.isMicrophoneEnabled],['camera',room.localParticipant.isCameraEnabled],['screen',room.localParticipant.isScreenShareEnabled]]) {
@@ -542,7 +576,7 @@ function updateSpeakingUI() {
   for(const entry of callMedia.values())if(entry.tile)entry.tile.classList.toggle('speaking',speaking.has(entry.participantId));
 }
 async function leaveCall() {
-  const previous = room;if(previous)microphoneSwitch.set(previous.localParticipant,false);room = null;callChannel = null;talkHeld=false;
+  cameraTask=null;const previous = room;if(previous)microphoneSwitch.set(previous.localParticipant,false);room = null;callChannel = null;talkHeld=false;
   enhancements?.callEnded(previous);
   if (previous) previous.removeAllListeners();
   for(const entry of [...callMedia.values()])disposeMedia(entry);
@@ -565,6 +599,7 @@ $('join-call').onclick = async () => {
     const connected = new Room({
       adaptiveStream: {pixelDensity:'screen'},
       dynacast:true,
+      webAudioMix:typeof (window.AudioContext||window.webkitAudioContext)==='function',
       audioCaptureDefaults:audioCapture(),
       videoCaptureDefaults:media.cameraCapture,
       publishDefaults: {
@@ -605,10 +640,10 @@ $('leave-call').onclick = () => leaveCall();
 if(!canShareScreen){$('screen').disabled=true;$('screen').title='Este navegador não suporta compartilhar a tela';}
 for (const [id, property, method] of [['mic','isMicrophoneEnabled','setMicrophoneEnabled'],['camera','isCameraEnabled','setCameraEnabled'],['screen','isScreenShareEnabled','setScreenShareEnabled']]) {
   $(id).onclick = async () => {
-    if (!room) return; $(id).disabled = true;
+    if (!room||id==='camera'&&cameraTask) return;const target=room,cameraWasEnabled=target.localParticipant.isCameraEnabled,operation=id==='camera'?{room:target}:null;if(operation)cameraTask=operation;$(id).disabled = true;
     try {
       const enabled = !room.localParticipant[property];
-      if (id === 'camera') {const media=mediaSettings();await room.localParticipant.setCameraEnabled(enabled,media.cameraCapture,media.cameraPublish);}
+      if (id === 'camera') {const media=mediaSettings();await target.localParticipant.setCameraEnabled(enabled,media.cameraCapture,media.cameraPublish);if(enabled&&room===target){const track=[...target.localParticipant.videoTrackPublications.values()].find(p=>(p.source||p.track?.source)==='camera')?.track;if(track){const facing=track.mediaStreamTrack?.getSettings?.().facingMode||cameraTrackFacing.get(track);if(facing&&facing!==cameraFacing)await track.restartTrack({...media.cameraCapture,deviceId:undefined,facingMode:{exact:cameraFacing}});cameraTrackFacing.set(track,cameraFacing);}}}
       else if (id === 'screen') {
         if(!canShareScreen)throw Error('Este navegador não oferece compartilhamento de tela. Em alguns celulares, use a opção de compartilhar tela do navegador ou do sistema.');
         const media=mediaSettings();await room.localParticipant.setScreenShareEnabled(enabled,media.screenCapture,media.screenPublish);
@@ -617,10 +652,34 @@ for (const [id, property, method] of [['mic','isMicrophoneEnabled','setMicrophon
       else if(id==='mic'&&pushToTalk){toast('Segure o botão “Falar” ou a tecla Espaço para abrir o microfone.');}
       else if(deafened&&enabled)toast('Ative o áudio antes de abrir o microfone.');else await microphoneSwitch.set(room.localParticipant,enabled);
     }
-    catch (error) { toast(errorText(error)); }
-    finally { $(id).disabled = id==='screen'&&!canShareScreen; updateCallUI(); }
+    catch (error) { if(id==='camera'&&!cameraWasEnabled&&room===target){await target.localParticipant.setCameraEnabled(false).catch(()=>{});toast('Não foi possível ativar a câmera escolhida. Selecione outra câmera e tente novamente.');}else toast(errorText(error)); }
+    finally { if(operation&&cameraTask===operation)cameraTask=null;$(id).disabled = id==='screen'&&!canShareScreen;updateCallUI();syncLocalCameraPreview(); }
   };
 }
+const facingField=el('label','camera-facing-control'),facingSelect=el('select');facingSelect.id='camera-facing';facingSelect.setAttribute('aria-label','Câmera do celular');
+for(const [value,name]of [['user','Frontal'],['environment','Traseira']]){const option=el('option','',name);option.value=value;facingSelect.append(option);}
+facingField.append(el('span','','Câmera'),facingSelect);$('camera').after(facingField);
+function updateCameraControl(){
+  facingField.hidden=!mobileCamera();facingSelect.disabled=!room||room.localParticipant.permissions?.canPublish===false||!!cameraTask;facingSelect.value=cameraFacing;
+  if(cameraTask)$('camera').disabled=true;syncLocalCameraPreview();
+}
+facingSelect.onchange=async()=>{
+  const next=facingSelect.value,previous=cameraFacing,target=room;if(!target||cameraTask||target.localParticipant.permissions?.canPublish===false){updateCameraControl();return;}
+  const publication=[...target.localParticipant.videoTrackPublications.values()].find(p=>(p.source||p.track?.source)==='camera'),track=publication?.track;
+  if(!target.localParticipant.isCameraEnabled||!track){cameraFacing=next;localStorage.setItem('orbita-camera-facing',next);updateCameraControl();return;}
+  const operation={room:target};cameraTask=operation;updateCameraControl();
+  try{
+    await track.restartTrack({...mediaSettings().cameraCapture,deviceId:undefined,facingMode:{exact:next}});
+    if(room!==target){track.stop?.();return;}
+    cameraFacing=next;cameraTrackFacing.set(track,next);localStorage.setItem('orbita-camera-facing',next);
+  }catch(error){
+    if(room!==target)return;
+    let restored=false;try{await track.restartTrack({...mediaSettings().cameraCapture,deviceId:undefined,facingMode:{exact:previous}});restored=true;}catch{await target.localParticipant.setCameraEnabled(false).catch(()=>{});}
+    toast(restored?'Não foi possível usar essa câmera. A câmera anterior foi restaurada.':'Não foi possível trocar de câmera. Ative o vídeo novamente e escolha outra câmera.');
+  }finally{if(cameraTask===operation)cameraTask=null;if(room===target){updateCallUI();updateCameraControl();}}
+};
+window.addEventListener('resize',updateCameraControl);
+document.addEventListener('pointerdown',()=>{const current=room;if(current?.state==='connected'&&current.canPlaybackAudio===false)current.startAudio().then(()=>{if(room===current)syncRemoteVolumes();}).catch(()=>{});},{passive:true});
 window.addEventListener('pagehide', () => { shuttingDown = true;if(presenceChannel)presenceChannel.untrack(); if (room) room.disconnect(); });
 window.addEventListener('pageshow', () => { shuttingDown = false; });
 
@@ -884,7 +943,7 @@ $('pins-toggle').onclick=()=>{pinsOnly=!pinsOnly;$('pins-toggle').setAttribute('
 $('back-to-call').onclick=()=>{if(callChannel)selectChannel(callChannel);};
 $('dock-leave').onclick=()=>leaveCall();
 let microphoneBeforeDeafen=false;
-$('deafen').onclick=()=>{if(!deafened)microphoneBeforeDeafen=!!room?.localParticipant.isMicrophoneEnabled;deafened=!deafened;document.querySelectorAll('[data-remote-audio]').forEach(a=>a.muted=deafened);$('deafen').setAttribute('aria-pressed',String(deafened));if(room){talkHeld=false;microphoneSwitch.set(room.localParticipant,!deafened&&microphoneBeforeDeafen&&!pushToTalk&&room.localParticipant.permissions?.canPublish!==false);}updateCallUI();};
+$('deafen').onclick=()=>{if(!deafened)microphoneBeforeDeafen=!!room?.localParticipant.isMicrophoneEnabled;deafened=!deafened;syncRemoteVolumes();$('deafen').setAttribute('aria-pressed',String(deafened));if(room){talkHeld=false;microphoneSwitch.set(room.localParticipant,!deafened&&microphoneBeforeDeafen&&!pushToTalk&&room.localParticipant.permissions?.canPublish!==false);}updateCallUI();};
 async function refreshMessages(){return loadMessages(generation,true);}
 async function refreshMessage(id,target={...selected}){
   const user=session?.user.id,key=conversationKey(user,target),version=generation;
@@ -1282,6 +1341,8 @@ updateCallUI=()=>{callBeforeEnhancements();enhancements.callUpdated();if(room?.s
 gifButton.onclick=()=>enhancements.showMediaPicker();
 $('file-input').multiple=true;
 $('file-input').onchange=async()=>{const files=[...$('file-input').files];await enhancements.sendFiles(files);$('file-input').value='';$('file-input').accept='';};
+const updateBeforeDeviceControls=updateCallUI;
+updateCallUI=()=>{updateBeforeDeviceControls();updateCameraControl();};
 feed=initSocialFeed({
   state:()=>({db,session,profile,moderator:siteRoles.some(role=>role.user_id===session?.user.id&&['creator','admin'].includes(role.role))}),
   el,toast,checked,showDialog,
