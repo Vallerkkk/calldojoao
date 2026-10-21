@@ -92,3 +92,12 @@ A configuração inicial, as solicitações da aplicação e a autorização da 
 O service worker guarda somente recursos estáticos da interface e ícones, com até 80 recursos além da tela offline e seus ícones. Substitui versões antigas do mesmo caminho e ignora instaladores, intervalos de arquivos, APIs e solicitações sem cache. Falhas de quota não interrompem respostas da rede. Metadados opcionais inválidos de perfil não quebram a emissão de tokens; uma conversa privada incompleta falha com resposta recuperável e sem liberar acesso.
 
 Regressões: `tests/call_session_browser.cjs` cobre tokens atrasados, troca de conta durante a liberação do áudio, nova tentativa após erro e retorno pelo histórico no PC e celular. `tests/service-worker.test.mjs`, `tests/chat-state.test.mjs` e `tests/test_reliability.py` verificam limites do cache, cancelamento, confirmação de envios e respostas incompletas do provedor. Nenhuma migração, dependência ou serviço pago foi adicionado.
+
+
+### Avatar do painel e vídeos enviados
+
+A foto no painel inferior preenche o círculo de 34 px, com recorte central, sem iniciais por cima e preservando o indicador de presença e a moldura. A troca de conta limpa a foto anterior antes de carregar o novo perfil.
+
+Vídeos enviados ao feed, aos canais, às DMs e às threads têm player inline com reprodução automática sem som ao aparecer na tela. Os controles nativos permitem ativar áudio e pausar. Uma pausa manual é respeitada; sair da área visível ou ocultar a página pausa a reprodução para economizar recursos. Remover a mensagem, fechar a thread ou trocar de conta libera a mídia. Chamadas e YouTube mantêm seus controles independentes. Se o navegador bloquear a reprodução automática, o botão de reproduzir continua disponível.
+
+`tests/media_autoplay_browser.cjs` usa um vídeo WebM gerado no navegador e contas simuladas para verificar reprodução real, mute inicial, pausa, navegação, limpeza de mídia e avatar no PC e no celular.

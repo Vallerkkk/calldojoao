@@ -2,6 +2,7 @@ import { relativeTime, safeLink, stickerNames, youtubeId, youtubeStart } from '.
 import { reserveImage, focusElement } from './dom-utils.js?v=fluency-20261020-2';
 import { requestWithDeadline } from './chat-state.js?v=review-20261021-1';
 import { requestAppInstall } from './app-install.js?v=launcher-20261020-1';
+import { watchUploadedVideo } from './uploaded-video.js?v=media-20261021-1';
 
 export function initEnhancements(context) {
   const { el, button, toast, checked, showDialog, inputField } = context;
@@ -193,7 +194,7 @@ export function initEnhancements(context) {
     const article=el('article','thread-message'),p=state().people.find(p=>p.id===message.author_id)||message.profiles||{};
     article.dataset.messageId=message.id;article.append(el('strong','',p.display_name||'Participante'),el('time','muted',relativeTime(message.created_at)),context.richText(message.content));
     article.orbitaMessage=message;
-    if(message.attachments){const a=message.attachments;if(a.mime_type?.startsWith('image/')){const image=el('img','attachment-preview');image.alt=a.name;image.loading='lazy';reserveImage(image);context.resolveAttachmentUrl(a).then(url=>image.src=url).catch(()=>image.remove());article.append(image);}article.append(button('↓ '+a.name,()=>context.downloadAttachment(a),'file-card'));}
+    if(message.attachments){const a=message.attachments;if(a.mime_type?.startsWith('image/')){const image=el('img','attachment-preview');image.alt=a.name;image.loading='lazy';reserveImage(image);context.resolveAttachmentUrl(a).then(url=>image.src=url).catch(()=>image.remove());article.append(image);}else if(a.mime_type?.startsWith('video/')){const video=watchUploadedVideo(el('video'));video.setAttribute('aria-label','Vídeo: '+a.name);article.append(video);context.resolveAttachmentUrl(a).then(url=>{if(video.isConnected)video.src=url;}).catch(()=>video.remove());}article.append(button('↓ '+a.name,()=>context.downloadAttachment(a),'file-card'));}
     const actions=el('div','message-actions');actions.append(button('Responder',()=>{closePanel();context.replyToMessage(message);},'tiny-button'));
     if(message.author_id===state().session.user.id)actions.append(button('Editar',()=>context.messageAction(message,'edit'),'tiny-button'));
     if(message.author_id===state().session.user.id||(!state().selected?.private&&context.hasPermission('manage_messages')))actions.append(button('Excluir',()=>context.messageAction(message,'delete'),'tiny-button'));
