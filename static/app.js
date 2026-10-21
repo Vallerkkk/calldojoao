@@ -1,4 +1,4 @@
-import { initCallLayout } from './call-layout.js?v=call-layout-20261021-1';
+import { initCallLayout } from './call-layout.js?v=call-layout-20261021-2';
 import { initSocialFeed } from './social-feed.js?v=feed-20261020-2';
 import { compressImage, relativeTime, safeLink, stickerNames } from './media-utils.js?v=fluency-20261020-2';
 import { initEnhancements } from './enhancements.js?v=devices-20261020-1';

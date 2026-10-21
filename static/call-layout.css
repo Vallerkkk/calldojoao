@@ -70,5 +70,5 @@ body.call-focus.mobile-menu-open .sidebar{display:flex!important;position:fixed;
 @media(prefers-reduced-motion:reduce){#voice-view *,#voice-view *::before{transition:none!important;animation:none!important}}
 @media(pointer:coarse){#voice-view .call-control-group>.call-icon{width:44px;min-width:44px}#voice-view #call-soundboard,#voice-view #vc-react-call,#voice-view .media-tile .expand-video{width:44px;min-width:44px}}
 @media(max-width:800px){#voice-view .call-live{right:58px}}
-#back-to-call-dock{position:fixed;right:16px;top:64px;z-index:25;max-width:calc(100vw - 32px);min-height:44px;padding:10px 16px;border:1px solid #3ba55c;border-radius:24px;background:#183a29;color:#fff;box-shadow:0 4px 20px #0005;font-size:12px;cursor:pointer}
+#back-to-call-dock{position:relative;order:-1;flex-shrink:0;width:100%;min-height:44px;padding:10px 16px;border:0;border-bottom:1px solid #3ba55c;border-radius:0;background:#183a29;color:#fff;font-size:12px;cursor:pointer}
 #voice-view .call-grid{max-width:var(--call-max-width,1440px)}
