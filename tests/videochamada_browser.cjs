@@ -4,7 +4,7 @@ const assert=require('node:assert/strict');
 const base=process.env.ORBITA_TEST_URL||'http://127.0.0.1:8766/';
 let browser;
 (async()=>{
- browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});
+ browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||undefined});
  for(const mobile of [false,true]){
   const context=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1440,height:1000},isMobile:mobile,hasTouch:mobile});
   const bodies=[],errors=[];

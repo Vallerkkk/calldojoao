@@ -4,7 +4,7 @@ const fs=require('fs'),path=require('path'),assert=require('node:assert/strict')
 const tmp=path.resolve(__dirname,'../work/browser-temp');fs.mkdirSync(tmp,{recursive:true});process.env.TEMP=tmp;process.env.TMP=tmp;
 let browser;
 (async()=>{
- browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});const report=[];
+ browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||undefined});const report=[];
  for(const mobile of [false,true]){
   const context=await browser.newContext({viewport:{width:mobile?390:1440,height:mobile?844:1000},isMobile:mobile,hasTouch:mobile});await context.addInitScript(OTHER=>localStorage.setItem('orbita-volume-'+OTHER,'0.65'),OTHER);
   const livekit=fs.readFileSync(path.join(__dirname,'fixtures/livekit_stub.mjs'),'utf8').replace('constructor() {','constructor(options) { window.__qaRoomOptions=options;');

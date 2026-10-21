@@ -1,5 +1,5 @@
-import {requestWithDeadline} from './chat-state.js?v=review-20261021-1';
-import {createNoiseProcessor} from './noise-processor.js?v=audio-20261021-1';
+import {requestWithDeadline} from './chat-state.js';
+import {createNoiseProcessor} from './noise-processor.js';
 
 export function initAudioControls(ctx){
   const {el,button}=ctx,read=kind=>localStorage.getItem('orbita-audio-'+kind)||'',tracks=new WeakMap();

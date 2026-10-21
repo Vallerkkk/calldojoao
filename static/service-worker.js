@@ -1,3 +1,4 @@
+importScripts('/static/share-worker.js');
 const CACHE = 'orbita-shell-20261021-review-1';
 const SHELL = ['/static/offline.html', '/static/icons/icon-192.png', '/static/icons/icon-512.png'];
 const MAX_ASSETS = 80;
@@ -19,10 +20,11 @@ self.addEventListener('activate', event => { event.waitUntil(caches.keys().then(
 self.addEventListener('message', event => { if (event.data?.type === 'SKIP_WAITING') self.skipWaiting(); });
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
+  if(event.request.method==='POST'&&url.origin===self.location.origin&&url.pathname==='/share-target'){event.respondWith(receiveShare(event.request));return;}
   if (event.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
   if (event.request.mode === 'navigate') { event.respondWith(fetch(event.request).catch(() => caches.match('/static/offline.html'))); return; }
   // Never cache private data, signed URLs, uploads or third-party requests.
-  const asset=/^\/static\/[^/]+\.(?:js|css)$/.test(url.pathname)||/^\/static\/(?:icons|assets|stickers)\/[^/]+\.(?:png|svg|webp|ico)$/.test(url.pathname)||SHELL.includes(url.pathname);
+  const asset=/^\/static\/dist\/[\w-]+\.(?:js|css)$/.test(url.pathname)||/^\/static\/[^/]+\.(?:js|css)$/.test(url.pathname)||/^\/static\/(?:icons|assets|stickers)\/[^/]+\.(?:png|svg|webp|ico)$/.test(url.pathname)||SHELL.includes(url.pathname);
   if(!asset||event.request.headers.has('range')||event.request.cache==='no-store')return;
   event.respondWith(fetch(event.request).then(response => { if (response.status===200&&!response.headers.get('cache-control')?.includes('no-store')) event.waitUntil(remember(event.request,response.clone())); return response; }).catch(async()=>await caches.match(event.request)||Response.error()));
 });

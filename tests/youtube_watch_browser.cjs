@@ -14,7 +14,7 @@ function fakeYouTube(){
  }};
 }
 (async()=>{
- browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});const report=[];
+ browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||undefined});const report=[];
  for(const mobile of [false,true]){
   const contexts=[],pages=[],errors=[];
   for(const identity of [USER,OTHER]){

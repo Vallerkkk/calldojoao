@@ -6,3 +6,13 @@
 #voice-view .watch-tile header{gap:8px;flex-shrink:0}#voice-view .watch-tile h2{font-size:14px;margin:0}#voice-view .watch-tile button{min-height:36px;font-size:11px;padding:6px 10px}#voice-view .watch-tile .watch-video{flex:1;min-height:140px;display:flex;background:#000}#voice-view .watch-tile iframe{width:100%;height:100%;min-height:140px;flex:1;border:0}#voice-view .watch-tile #youtube-player{width:100%;min-height:140px}#voice-view .watch-tile .muted{font-size:11px;margin:5px 0}#voice-view .watch-tile form{margin:4px 0;flex-shrink:0}#voice-view .watch-tile input{min-height:36px;padding:6px 10px}#voice-view .watch-tile .watch-controls{margin:4px 0;gap:4px;align-items:center;flex-shrink:0}#voice-view .watch-tile input[type=range]{width:80px;min-width:60px;padding:0;accent-color:#ab91ff}#voice-view .watch-tile summary{cursor:pointer;min-height:32px;padding:6px 0;font-size:12px}#voice-view .watch-tile details button,#voice-view .watch-tile details a{margin:4px}
 @media(max-width:800px){#voice-view .watch-tile{aspect-ratio:auto;min-height:390px}#voice-view .watch-tile .watch-video{min-height:180px}#voice-view .watch-tile button,#voice-view .watch-tile input,#voice-view .watch-tile summary{min-height:44px}#voice-view .watch-tile input:not([type=range]){font-size:16px}}
 @media(prefers-reduced-motion:reduce){.entry-animation img,.entry-progress::after{animation:none}.entry-progress::after{transform:none;width:100%}}
+
+.update-notice{position:fixed;z-index:140;bottom:90px;left:50%;transform:translateX(-50%);width:min(560px,calc(100vw - 24px));padding:16px;border:1px solid #9b87ed;border-radius:12px;background:#201c30;color:#f5f4fc;box-shadow:0 8px 32px #0008}.update-notice p{margin:0 0 10px}.update-notice button{min-height:44px;margin:0 8px 0 0;padding:8px 14px;color:#fff;background:#58418b;border:1px solid #a697d1;border-radius:8px}
+
+body .primary,body[data-color-mode=light] .primary{color:var(--accent-foreground,#fff)}
+body .channel.active,body .channel:hover,body .category-header,body .ch-desc,body .muted{color:var(--text-dim)}
+body .text-button,body .message-content a,body .sf-inline{color:var(--accent-ink,var(--accent))}
+:focus-visible{outline:3px solid var(--accent-ink,#b8a6ff);outline-offset:3px}
+input::placeholder,textarea::placeholder{color:var(--text-mut);opacity:1}
+
+body #banner-action-btn{color:var(--accent-foreground,#fff)}

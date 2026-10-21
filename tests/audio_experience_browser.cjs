@@ -4,7 +4,7 @@ const fs=require('fs'),path=require('path'),assert=require('node:assert/strict')
 const tmp=path.resolve(__dirname,'../work/browser-temp');fs.mkdirSync(tmp,{recursive:true});process.env.TEMP=tmp;process.env.TMP=tmp;
 let browser;
 (async()=>{
- browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});const base=process.env.ORBITA_TEST_URL||'http://127.0.0.1:8766/',report=[];
+ browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||undefined});const base=process.env.ORBITA_TEST_URL||'http://127.0.0.1:8766/',report=[];
  // Real RNNoise/WASM execution on generated noise, with no physical microphone.
  const dsp=await browser.newPage();await dsp.route('**/api/config',r=>r.fulfill({json:{configured:false}}));await dsp.goto(base,{waitUntil:'networkidle'});await dsp.mouse.click(30,30);
  const metrics=await dsp.evaluate(async()=>{

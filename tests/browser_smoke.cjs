@@ -7,7 +7,7 @@ const {stub,USER,OTHER,COMM,TEXT,TEXT2,VOICE}=require('./fixtures/supabase_fixtu
 fs.writeFileSync(path.join(tmp,'qa-supabase-stub.mjs'),stub);
 let browser;
 (async()=>{
- browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe',args:['--no-sandbox']});
+ browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH || undefined,args:['--no-sandbox']});
  const report=[];
  for(const mobile of [false,true]){console.log('QA viewport',mobile?'mobile':'desktop');
   const context=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1440,height:1000},isMobile:mobile,hasTouch:mobile,serviceWorkers:'allow'});

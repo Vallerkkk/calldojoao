@@ -1,12 +1,13 @@
-import {compressImage, relativeTime} from './media-utils.js?v=fluency-20261020-2';
-import {watchUploadedVideo} from './uploaded-video.js?v=audio-20261021-1';
+import {foreground} from './theme-accessibility.js';
+import {compressImage, relativeTime} from './media-utils.js';
+import {watchUploadedVideo} from './uploaded-video.js';
 
 // Feed requests always carry the existing authenticated Supabase client.
 export function initSocialFeed(ctx) {
   const {el, toast, checked, showDialog} = ctx;
   const root=el('div','social-feed');root.id='feed-view';root.hidden=true;
   document.querySelector('.main').append(root);
-  const nav=el('button','server-icon action-rail','◈');nav.id='feed-nav';nav.title='Feed da Órbita';nav.setAttribute('aria-label','Feed da Órbita');
+  const nav=document.getElementById('feed-nav')||el('button','server-icon action-rail','◈');nav.id='feed-nav';nav.title='Feed da Órbita';nav.setAttribute('aria-label','Feed da Órbita');
   document.querySelector('#friends-nav').after(nav);
   let epoch=0, scope='explore', query='', author=null, parent=null, rows=[], loading=false, more=false, observer, draft='', draftId, files=[], quote=null, busy=false, uid=null;
   let scroll, list, status, composer, input, previews, send, counter, peopleBox, tabs, search, accountEpoch=0, uncertain=false;
@@ -34,7 +35,7 @@ export function initSocialFeed(ctx) {
     if(user!==state().session?.user.id)return '';const url=result.data?.signedUrl||'';if(url)urls.set(key,{url,until:Date.now()+240000});while(urls.size>300)urls.delete(urls.keys().next().value);return url;
   }
   function avatar(p){const node=b((p?.display_name||'?').slice(0,2).toUpperCase(),()=>open('profile',{author:p.id}),'sf-avatar');node.setAttribute('aria-label','Perfil de '+(p?.display_name||'Participante'));
-    if(/^#[0-9a-f]{6}$/i.test(p?.avatar_color))node.style.backgroundColor=p.avatar_color;
+    if(/^#[0-9a-f]{6}$/i.test(p?.avatar_color))node.style.backgroundColor=p.avatar_color;node.style.color=foreground(p?.avatar_color||'#7c5cff');
     if(p?.avatar_url){const current=accountEpoch;signed(p.avatar_url,'orbita-files').then(src=>{if(src&&current===accountEpoch&&node.isConnected){const img=el('img');img.src=src;img.alt='';img.loading='lazy';node.replaceChildren(img);}});}return node;
   }
   function menu(post){const details=el('details','sf-menu'),summary=el('summary','','•••');summary.setAttribute('aria-label','Opções da publicação');details.append(summary);const box=el('div','sf-menu-items');details.append(box);
@@ -57,7 +58,7 @@ export function initSocialFeed(ctx) {
     article.append(rich(post.content));
     if(post.updated_at)article.append(el('small','sf-muted','Editado'));
     if(post.media?.length){const media=el('div','sf-media');media.dataset.count=post.media.length;article.append(media);
-      for(const path of post.media){const video=/\.(mp4|webm)$/i.test(path),node=el(video?'video':'img');node.setAttribute('aria-label',video?'Vídeo da publicação':'Imagem da publicação');if(video){watchUploadedVideo(node);
+      for(const path of post.media){const video=/\.(mp4|webm)$/i.test(path),node=el(video?'video':'img');node.setAttribute('aria-label',video?'Vídeo da publicação':'Imagem da publicação');if(video){node.crossOrigin='anonymous';watchUploadedVideo(node);
   node.addEventListener('loadeddata',()=>{try{if(node.videoWidth){const c=document.createElement('canvas');const scale=Math.min(1,640/node.videoWidth,360/node.videoHeight);c.width=Math.max(1,Math.round(node.videoWidth*scale));c.height=Math.max(1,Math.round(node.videoHeight*scale));c.getContext('2d').drawImage(node,0,0,c.width,c.height);node.poster=c.toDataURL('image/jpeg',0.7);}}catch(e){}});
 }else{node.alt='Imagem da publicação';node.loading='lazy';node.decoding='async';}media.append(node);
         const account=accountEpoch;signed(path).then(src=>{if(src&&account===accountEpoch&&node.isConnected)node.src=src;else if(node.isConnected)node.replaceWith(el('p','sf-muted','Anexo indisponível. Atualize o feed para tentar novamente.'));});
@@ -140,7 +141,7 @@ export function initSocialFeed(ctx) {
     for(const [key,label] of [['explore','Explorar'],['following','Seguindo'],['saved','Salvos'],['people','Pessoas'],['activity','Notificações']]){const tab=b(label,()=>open(key));tab.setAttribute('aria-current',scope===key?'page':'false');tabs.append(tab);}
     tabs.append(b('Atualizar',()=>open(scope,{author,parent,query})));center.append(tabs);
     const form=el('form','sf-search');search=el('input');search.type='search';search.placeholder='Buscar publicações, pessoas ou #assuntos';search.setAttribute('aria-label','Buscar no feed');search.value=query;const submit=el('button','sf-button','Buscar');submit.type='submit';form.append(search,submit);form.onsubmit=event=>{event.preventDefault();open('explore',{query:search.value.trim().slice(0,100)});};center.append(form);
-    scroll=el('div','sf-scroll');if(scope==='profile'||scope==='thread')scroll.append(b('← Voltar ao feed',()=>open()));latest=b('Novas publicações — atualizar',()=>open(scope,{author,parent,query}));latest.hidden=true;latest.classList.add('sf-latest');scroll.append(latest);composer=makeComposer();composer.hidden=!['explore','following','thread'].includes(scope)||!!query;scroll.append(composer);list=el('div','sf-list');list.setAttribute('aria-label','Publicações');status=b('Carregando…',()=>load(more));status.classList.add('sf-load');status.setAttribute('aria-live','polite');scroll.append(list,status);center.append(scroll);
+    scroll=el('div','sf-scroll');if(scope==='profile'||scope==='thread')scroll.append(b('← Voltar ao feed',()=>open()));latest=b('Novas publicações — atualizar',()=>open(scope,{author,parent,query}));latest.hidden=true;latest.classList.add('sf-latest');scroll.append(latest);composer=makeComposer();composer.hidden=!['explore','following','thread'].includes(scope)||!!query;scroll.append(composer);list=el('div','sf-list');list.setAttribute('role','region');list.setAttribute('aria-label','Publicações');status=b('Carregando…',()=>load(more));status.classList.add('sf-load');status.setAttribute('aria-live','polite');scroll.append(list,status);center.append(scroll);
     peopleBox=el('aside','sf-people');peopleBox.setAttribute('aria-label','Perfis do feed');layout.append(center);if(scope==='people'||query&&matchMedia('(max-width:1000px)').matches){peopleBox.classList.add('sf-people-inline');list.before(peopleBox);}else layout.append(peopleBox);root.append(layout);updateComposer();
     observer=new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting)&&more&&!loading)load(true);},{root:scroll,rootMargin:'100px'});
     if(scope==='thread')thread(version,user);else if(scope==='activity')activity(version,user);else if(scope!=='people')load();else status.hidden=true;people(version,user);ctx.closeMenu();

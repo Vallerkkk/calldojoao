@@ -14,7 +14,7 @@ Os arquivos ficam em um bucket privado do Supabase e respeitam o acesso ao canal
 
 O Render publica a branch `main` usando `render.yaml`. Configure no Render as variáveis `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `LIVEKIT_URL`, `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET`. Não publique o arquivo `.env` nem use chaves secretas no navegador.
 
-Para instalar ou atualizar o esquema em um projeto Supabase novo, execute `supabase.sql`. Para um projeto existente, aplique as migrações em `migrations/` na ordem indicada pelos nomes. As credenciais e chaves secretas devem ficar nas variáveis de ambiente do Render.
+Em um projeto Supabase novo, execute uma vez o `supabase.sql` gerado. Em projetos existentes, aplique somente migrações ainda pendentes de `supabase/migrations/`, conferindo o histórico remoto. Não reaplique o baseline ou o arquivo completo em produção. As credenciais e chaves secretas devem ficar nas variáveis de ambiente do Render.
 
 ## Desenvolvimento local
 
@@ -23,7 +23,7 @@ Copie `.env.example` para `.env`, configure as variáveis e execute `iniciar_orb
 A permissão de microfone, câmera e compartilhamento de tela é solicitada pelo navegador. Para transmitir áudio da tela, selecione uma aba ou janela compatível e marque a opção de compartilhar áudio oferecida pelo próprio navegador.
 ## Organização dos fontes
 
-A interface utilizada pelo servidor fica em `static/index.html`. O servidor inicia por `app:app`. O esquema principal fica em `supabase.sql`, e as alterações incrementais em `migrations/`. O aplicativo Windows e o atualizador ficam em `desktop/`. As pastas `tests/`, `.github/` e os lockfiles são necessários para validação e publicação.
+A interface utilizada pelo servidor fica em `static/index.html`. O servidor inicia por `app:app`. A fonte editável do banco é `supabase/migrations/`; `supabase.sql` é gerado por `python scripts/database.py --write`. O aplicativo Windows e o atualizador ficam em `desktop/`. As pastas `tests/`, `.github/` e os lockfiles são necessários para validação e publicação.
 
 O arquivo `.env` e o ambiente `.venv/` são locais e não devem ser enviados ao GitHub ou Render.
 
@@ -138,3 +138,8 @@ Ao escolher um vídeo, todos recebem automaticamente um bloco YouTube na grade, 
 Comandos confiáveis do LiveKit usam versão lógica e desempate por identidade para convergir em escolhas simultâneas. Correções periódicas de tempo vêm de uma identidade eleita entre os presentes. Pedidos de estado atendem entradas tardias; dados de fora da sala e pacotes inválidos são ignorados. Não há servidor extra ou serviço pago. Vídeos privados, removidos, restritos pelo autor e bloqueios de reprodução do navegador continuam sujeitos às regras do YouTube; o bloco oferece erro, tentativa novamente e link externo.
 
 Validação: tests/identity_browser.cjs e tests/youtube_watch_browser.cjs cobrem PC/celular com duas contas simuladas. tests/nicknames_admin_access.sql usa transação revertida para testar unicidade, sincronização de nomes, promoção exclusiva do criador, proteção de criadores, revogação, ausência de escrita direta e auditoria sem deixar dados de teste.
+
+
+## Desempenho, qualidade e operação
+
+A interface de produção é compilada com `npm ci` e `npm run build`, com arquivos compactados, hashes automáticos e carregamento sob demanda. O workflow de qualidade roda em cada push. Consulte [docs/OPERATIONS.md](docs/OPERATIONS.md) para testes, adoção do baseline, PWA, avisos de atualização e configuração opcional de Sentry/Umami/UptimeRobot. As integrações externas permanecem desligadas sem configuração; nenhuma assinatura foi contratada.

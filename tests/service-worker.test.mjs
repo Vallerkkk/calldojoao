@@ -13,7 +13,7 @@ function worker(){
     delete:async request=>entries.delete(absolute(request)),
     addAll:async paths=>paths.forEach(url=>entries.set(absolute(url),new Response('offline'))),
   };
-  const context={URL,Response,Promise,console,self:{location:{origin},addEventListener:(type,callback)=>handlers[type]=callback},
+  const context={URL,Response,Promise,console,importScripts:()=>{},self:{location:{origin},addEventListener:(type,callback)=>handlers[type]=callback},
     fetch:async()=>{if(failNetwork)throw Error('offline');return new Response('asset');},
     caches:{open:async()=>cache,match:async request=>entries.get(absolute(request))?.clone()}};
   vm.runInNewContext(source,context);

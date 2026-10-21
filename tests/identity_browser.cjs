@@ -4,7 +4,7 @@ const fs=require('fs'),path=require('path'),assert=require('node:assert/strict')
 const tmp=path.resolve(__dirname,'../work/browser-temp');fs.mkdirSync(tmp,{recursive:true});process.env.TEMP=tmp;process.env.TMP=tmp;
 let browser;
 (async()=>{
- browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});const report=[];
+ browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||undefined});const report=[];
  const mock=stub+`;data.site_admin_audit=[];window.__qaRPC=[];const originalCreateClient=createClient;createClient=function(){const client=originalCreateClient(),rpc=client.rpc;client.rpc=async(name,args)=>{window.__qaRPC.push({name,args});if(name!=='set_site_admin')return rpc(name,args);const actor=window.__qaSession.user.id;if(!data.site_roles.some(r=>r.user_id===actor&&r.role==='creator'))return {data:null,error:{message:'Somente um criador'}};data.site_roles=data.site_roles.filter(r=>r.user_id!==args.member);if(args.enabled)data.site_roles.push({user_id:args.member,role:'admin'});data.site_admin_audit.push({actor_id:actor,target_id:args.member,action:args.enabled?'grant_admin':'revoke_admin',created_at:new Date().toISOString()});return {data:true,error:null};};return client;};`;
  for(const mobile of [false,true]){
   const context=await browser.newContext({viewport:{width:mobile?390:1440,height:mobile?844:1000},isMobile:mobile,hasTouch:mobile,reducedMotion:'reduce'});let release;const pending=new Promise(r=>release=r);let waitConfig=true;

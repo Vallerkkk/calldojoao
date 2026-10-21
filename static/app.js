@@ -1,17 +1,20 @@
-import {initAdminControls} from './admin-controls.js?v=identity-20261021-1';
-import {initAudioControls} from './audio-controls.js?v=audio-20261021-1';
-import {initCallReactions} from './call-reactions.js?v=audio-20261021-1';
-import { initCommunityUX } from './community-ux.js?v=community-20261021-1';
-import { initCallLayout } from './call-layout.js?v=identity-20261021-1';
-import { initSocialFeed } from './social-feed.js?v=audio-20261021-1';
-import { watchUploadedVideo,setUploadedVideoOutput } from './uploaded-video.js?v=audio-20261021-1';
-import { compressImage, relativeTime, safeLink, stickerNames } from './media-utils.js?v=fluency-20261020-2';
-import { initEnhancements } from './enhancements.js?v=identity-20261021-1';
-import { DraftStore, serialToggle } from './runtime-utils.js?v=fluency-20261020-2';
-import { ConversationCache, MessageOutbox, conversationKey, requestWithDeadline } from './chat-state.js?v=review-20261021-1';
-import { reconcileNodes, reserveImage, focusElement } from './dom-utils.js?v=fluency-20261020-2';
-import { choosePrivateCall } from './private-call-menu.js?v=videochamada-20261020-1';
-let enhancements, feed, callLayout, communityUX, audioTools, callReactions;
+import {DECORATIONS} from './profile-decoration-catalog.js';
+import {initShareReceiver} from './share-target.js';
+import {initThemeAccessibility,foreground} from './theme-accessibility.js';
+import {initAppUpdates} from './app-updates.js';
+import {loadStyle} from './lazy-assets.js';
+import {initAudioControls} from './audio-controls.js';
+import {initCallReactions} from './call-reactions.js';
+import { initCommunityUX } from './community-ux.js';
+import { initCallLayout } from './call-layout.js';
+import { watchUploadedVideo,setUploadedVideoOutput } from './uploaded-video.js';
+import { compressImage, relativeTime, safeLink, stickerNames } from './media-utils.js';
+import { initEnhancements } from './enhancements.js';
+import { DraftStore, serialToggle } from './runtime-utils.js';
+import { ConversationCache, MessageOutbox, conversationKey, requestWithDeadline } from './chat-state.js';
+import { reconcileNodes, reserveImage, focusElement } from './dom-utils.js';
+import { choosePrivateCall } from './private-call-menu.js';
+let shareReceiver, enhancements, feed, callLayout, communityUX, audioTools, callReactions;
 const drafts = new DraftStore(), pendingSends = new Set();
 const draftKey = target => session && target ? session.user.id + ':' + (target.private ? 'dm:' : 'channel:') + target.id : '';
 function saveComposerDraft() { if (!home && selected?.kind === 'text') drafts.set(draftKey(selected), $('message-input').value); }
@@ -147,7 +150,7 @@ async function showSession(next) {
     if(transition===sessionTransition)sessionReady=true;
   }catch(error){if(transition===sessionTransition){toast('Não foi possível carregar a comunidade: '+errorText(error));sessionRecovery.hidden=false;}}
   finally{if(transition===sessionTransition){sessionInitializing=false;setEntryBusy(false);}}
-  if(transition===sessionTransition){await enhancements.sessionChanged();feed?.deepLink();}
+  if(transition===sessionTransition){await enhancements.sessionChanged();feed?.deepLink();shareReceiver?.resume();}
 }
 $('logout').onclick = async () => {
   try { await enhancements?.disablePush(true); } catch {}
@@ -741,6 +744,7 @@ async function boot() {
   if(booting)return;booting=true;setEntryBusy(true);startupRetry.hidden=true;$('auth-status').textContent='';
   try {
     config=await requestWithDeadline(async signal=>{const response=await fetch('/api/config',{signal});if(!response.ok)throw Error('O servidor está indisponível. Aguarde e tente novamente.');return response.json();},{timeout:30000});
+    if(config.sentryDsn||config.umamiScript)import('./telemetry.js').then(module=>module.configureTelemetry(config)).catch(()=>{});
     if (!config.configured) { $('setup').hidden = false; $('auth-submit').disabled = true; return; }
     const {createClient} = await requestWithDeadline(()=>import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/+esm'),{timeout:30000});
     if(!db){db=createClient(config.supabaseUrl,config.supabaseKey);
@@ -836,7 +840,7 @@ async function hydrateProfileMedia(){
   while(profileMediaUrls.size>256)profileMediaUrls.delete(profileMediaUrls.keys().next().value);
   for(const p of profiles){p.avatar_src=profileMediaUrls.get(p.avatar_url)?.url||'';p.banner_src=profileMediaUrls.get(p.banner_url)?.url||'';}
 }
-function setAvatar(node,p){node.dataset.userId=p?.id||'';node.textContent=initials(p?.display_name);node.style.backgroundColor=p?.avatar_color||'#8b80ff';node.style.backgroundImage=p?.avatar_src?`url("${p.avatar_src.replaceAll('"','%22')}")`:'';node.classList.toggle('has-photo',!!p?.avatar_src);}
+function setAvatar(node,p){node.dataset.userId=p?.id||'';node.textContent=initials(p?.display_name);node.style.backgroundColor=p?.avatar_color||'#8b80ff';node.style.color=p?.avatar_src?'transparent':foreground(p?.avatar_color||'#8b80ff');node.style.backgroundImage=p?.avatar_src?`url("${p.avatar_src.replaceAll('"','%22')}")`:'';node.classList.toggle('has-photo',!!p?.avatar_src);}
 async function initSocial() {
   const transition=sessionTransition,uid=session?.user.id,current=()=>sessionTransition===transition&&session?.user.id===uid;
   await loadSocial();
@@ -1341,6 +1345,7 @@ const baseLoadSocial=loadSocial;loadSocial=async()=>{await baseLoadSocial();upda
 const baseSettings=$('settings').onclick;
 $('settings').onclick=()=>{
   baseSettings();const container=$('dialog-content'),appearance=el('div');
+  loadExtraThemes().catch(error=>toast(errorText(error)));
   const themeLabel=el('label','field','Tema'),theme=el('select');for(const [key,label]of[['orbita','Violeta Órbita'],['blurple','Blurple'],['emerald','Emerald'],['nitro','Pink'],['cyber','Cyber Neon'],['forest','Floresta'],['ocean','Oceano'],['sunset','Pôr do Sol'],['midnight','Meia-Noite'],['blood','Sangue'],['gold','Ouro'],['sakura','Sakura']]){const option=el('option','',label);option.value=key;theme.append(option);}theme.value=localStorage.getItem('orbita-theme')||'orbita';theme.setAttribute('aria-label','Tema');themeLabel.append(theme);appearance.append(themeLabel);
   const densityLabel=el('label','field','Densidade'),density=el('select');for(const value of ['cozy','compact']){const option=el('option','',value==='cozy'?'Confortável':'Compacta');option.value=value;density.append(option);}density.value=localStorage.getItem('orbita-density')||'cozy';densityLabel.append(density);appearance.append(densityLabel);
   for(const [input,key]of[[theme,'theme'],[density,'density']])input.onchange=()=>{localStorage.setItem('orbita-'+key,input.value);document.body.dataset[key]=input.value;};
@@ -1372,6 +1377,8 @@ const screenLabel=el('label','screen-option'),screenCheck=el('input');screenChec
 function updateScreenAudio(){localStorage.setItem('orbita-screen-audio',String(screenCheck.checked));}
 screenCheck.onchange=updateScreenAudio;updateScreenAudio();
 $('btn-notif-toggle').onclick=async()=>{if(!('Notification'in window))return toast('Este navegador não oferece notificações.');const permission=await Notification.requestPermission();toast(permission==='granted'?'Notificações ativadas neste navegador.':'Notificações não autorizadas.');};
+function loadExtraThemes(){return loadStyle('/static/themes.css');}
+if((localStorage.getItem('orbita-theme')||'orbita')!=='orbita')loadExtraThemes().catch(error=>toast(errorText(error)));
 document.body.dataset.theme=localStorage.getItem('orbita-theme')||'orbita';document.body.dataset.density=localStorage.getItem('orbita-density')||'cozy';
 window.addEventListener('pagehide',()=>{if(extraSubscription)db?.removeChannel(extraSubscription);});
 
@@ -1499,7 +1506,7 @@ callLayout=initCallLayout({audioSettings:()=>audioTools?.open(),soundSettings:bo
 });
 const updateBeforeCallLayout=updateCallUI;
 updateCallUI=()=>{updateBeforeCallLayout();callLayout.update();};
-feed=initSocialFeed({
+const feedContext={
   state:()=>({db,session,profile,moderator:siteRoles.some(role=>role.user_id===session?.user.id&&['creator','admin'].includes(role.role))}),
   el,toast,checked,showDialog,
   profile:p=>p.id===session?.user.id?$('settings').click():showProfile(person(p.id)||p),
@@ -1508,7 +1515,13 @@ feed=initSocialFeed({
     renderChannels();renderSocial();updateCallUI();enhancements.channelChanged().catch(()=>{});},
   menu:()=>{document.body.classList.add('mobile-menu-open');document.querySelectorAll('.mobile-nav-btn').forEach(node=>node.setAttribute('aria-expanded','true'));},
   closeMenu:closeMobileMenu
-});
+};
+let feedInstance,feedTask,feedNavigation=0;
+const feedNav=el('button','server-icon action-rail','◈');feedNav.id='feed-nav';feedNav.title='Feed da Órbita';feedNav.setAttribute('aria-label',feedNav.title);$('friends-nav').after(feedNav);
+async function loadFeed(){if(feedInstance)return feedInstance;if(!feedTask)feedTask=Promise.all([import('./social-feed.js'),loadStyle('/static/social-feed.css')]).then(([module])=>feedInstance=module.initSocialFeed(feedContext)).catch(error=>{feedTask=null;throw error;});return feedTask;}
+feed={open:async(...args)=>{const uid=session?.user.id,epoch=++feedNavigation;try{const instance=await loadFeed();if(uid===session?.user.id&&epoch===feedNavigation)return instance.open(...args);}catch(error){toast(errorText(error));}},hide:()=>{feedNavigation++;feedInstance?.hide();},sessionChanged:()=>{feedNavigation++;feedInstance?.sessionChanged();},deepLink:()=>{if(new URL(location.href).searchParams.has('post'))loadFeed().then(instance=>instance.deepLink()).catch(error=>toast(errorText(error)));}};
+feedNav.onclick=()=>feed.open();
+
 boot();
 
 
@@ -1532,31 +1545,7 @@ function applyProfileStyles() {
     if(owner && ['glow','shimmer','rainbow'].includes(prefs.effect)) el.classList.add('name-effect-'+prefs.effect);
   });
 }
-function openProfileCustomizer() {
-  showDialog('Personalizar perfil', container => {
-    const card = el('div', 'profile-edit-card'); container.append(card); const inner = el('div','profile-edit-content'); card.append(inner); container = inner;
-    const prefs = loadProfilePrefs();
-    const font = el('select');
-    font.innerHTML = '<option value="">Padrão</option><option value="inter">Inter</option><option value="mono">Monospace</option><option value="serif">Serif</option><option value="display">Display</option>';
-    font.value = prefs.font || '';
-    const effect = el('select');
-    effect.innerHTML = '<option value="">Nenhum</option><option value="glow">Glow</option><option value="shimmer">Shimmer</option><option value="rainbow">Rainbow</option>';
-    effect.value = prefs.effect || '';
-    const preview=el('div','profile-color-preview',profile?.display_name||'Sua capa');
-    const bannerColor = el('input'); bannerColor.type = 'color'; bannerColor.value = prefs.bannerColor || '#7c5cff';
-    preview.style.backgroundColor=bannerColor.value;bannerColor.oninput=()=>preview.style.backgroundColor=bannerColor.value;
-    const fontLabel = el('label','field','Fonte do nome'); fontLabel.append(font);
-    const effectLabel = el('label','field','Efeito do nome'); effectLabel.append(effect);
-    const colorLabel = el('label','field','Cor da capa'); colorLabel.append(bannerColor);
-    container.append(preview,el('p','muted','Personalização local do seu perfil neste dispositivo.'),fontLabel, effectLabel, colorLabel,
-      button('Salvar', () => {
-        saveProfilePrefs({ ...loadProfilePrefs(),font: font.value, effect: effect.value, bannerColor: bannerColor.value });
-        $('app-dialog').close();
-        toast('Personalização salva.');
-      }, 'primary')
-    );
-  });
-}
+function openProfileCustomizer(){return openProfileAppearance('openProfileCustomizer');}
 // Hook into settings if available
 const originalSettingsClick = $('settings')?.onclick;
 if ($('settings')) {
@@ -1625,55 +1614,7 @@ const preferencesObserver=new MutationObserver(()=>{if(preferencesFrame)return;p
 preferencesObserver.observe($('app-view'),{childList:true,subtree:true,attributes:true,attributeFilter:['hidden']});
 
 // === Profile decorations gallery (Discord-shop style) ===
-const DECORATIONS = [
-  { id: 'none', name: 'Nenhum', type: 'frame', css: '', theme: 'Básico' },
-  { id: 'pearls', name: 'Pérolas de Arco-Íris', type: 'frame', css: 'avatar-frame-pearls', theme: 'Sereia' },
-  { id: 'eye', name: 'Olho Encantado', type: 'frame', css: 'avatar-frame-eye', theme: 'Folclore' },
-  { id: 'heart', name: 'Coração', type: 'frame', css: 'avatar-frame-heart', theme: 'Romance' },
-  { id: 'gold', name: 'Ouro', type: 'frame', css: 'avatar-frame-gold', theme: 'Luxo' },
-  { id: 'glow', name: 'Brilho', type: 'frame', css: 'avatar-frame-glow', theme: 'Básico' },
-  { id: 'fire', name: 'Chamas', type: 'frame', css: 'avatar-frame-fire', theme: 'Fogo' },
-  { id: 'ice', name: 'Gelo', type: 'frame', css: 'avatar-frame-ice', theme: 'Inverno' },
-  { id: 'neon', name: 'Neon', type: 'frame', css: 'avatar-frame-neon', theme: 'Cyber' },
-  { id: 'moon', name: 'Lua', type: 'frame', css: 'avatar-frame-moon', theme: 'Noturno' },
-  { id: 'sakura', name: 'Sakura', type: 'frame', css: 'avatar-frame-sakura', theme: 'Japão' },
-  { id: 'cyber', name: 'Cyber', type: 'frame', css: 'avatar-frame-cyber', theme: 'Cyber' },
-  { id: 'forest', name: 'Floresta', type: 'frame', css: 'avatar-frame-forest', theme: 'Natureza' },
-  { id: 'ocean', name: 'Oceano', type: 'frame', css: 'avatar-frame-ocean', theme: 'Sereia' },
-  { id: 'sunset', name: 'Pôr do Sol', type: 'frame', css: 'avatar-frame-sunset', theme: 'Natureza' },
-  { id: 'galaxy', name: 'Galáxia', type: 'frame', css: 'avatar-frame-galaxy', theme: 'Espaço' },
-  { id: 'ghost', name: 'Fantasma', type: 'frame', css: 'avatar-frame-ghost', theme: 'Terror' },
-  { id: 'vampire', name: 'Vampiro', type: 'frame', css: 'avatar-frame-vampire', theme: 'Terror' },
-  { id: 'angel', name: 'Anjo', type: 'frame', css: 'avatar-frame-angel', theme: 'Divino' },
-  { id: 'demon', name: 'Demônio', type: 'frame', css: 'avatar-frame-demon', theme: 'Terror' },
-  { id: 'rainbow', name: 'Arco-Íris', type: 'frame', css: 'avatar-frame-rainbow', theme: 'Colorido' },
-  { id: 'bubbles', name: 'Bolhas', type: 'effect', css: 'profile-effect-bubbles', theme: 'Sereia' },
-  { id: 'sparkles', name: 'Brilhos', type: 'effect', css: 'profile-effect-sparkles', theme: 'Mágico' },
-  { id: 'firefx', name: 'Efeito Fogo', type: 'effect', css: 'profile-effect-fire', theme: 'Fogo' },
-  { id: 'stars', name: 'Estrelas', type: 'effect', css: 'profile-effect-stars', theme: 'Espaço' },
-  { id: 'aurora', name: 'Aurora', type: 'effect', css: 'profile-effect-aurora', theme: 'Natureza' },
-  { id: 'rain', name: 'Chuva', type: 'effect', css: 'profile-effect-rain', theme: 'Clima' },
-  { id: 'gothic', name: 'Gótico', type: 'frame', css: 'avatar-frame-gothic', theme: 'Gótico' },
-  { id: 'cyberpunk', name: 'Cyberpunk', type: 'frame', css: 'avatar-frame-cyberpunk', theme: 'Cyberpunk' },
-  { id: 'halloween', name: 'Halloween', type: 'frame', css: 'avatar-frame-halloween', theme: 'Halloween' },
-  { id: 'christmas', name: 'Natal', type: 'frame', css: 'avatar-frame-christmas', theme: 'Natal' },
-  { id: 'buddhist', name: 'Budista', type: 'frame', css: 'avatar-frame-buddhist', theme: 'Espiritual' },
-  { id: 'christian', name: 'Cristão', type: 'frame', css: 'avatar-frame-christian', theme: 'Espiritual' },
-  { id: 'samurai', name: 'Samurai', type: 'frame', css: 'avatar-frame-samurai', theme: 'Japão' },
-  { id: 'steampunk', name: 'Steampunk', type: 'frame', css: 'avatar-frame-steampunk', theme: 'Steampunk' },
-  { id: 'pastel', name: 'Pastel', type: 'frame', css: 'avatar-frame-pastel', theme: 'Suave' },
-  { id: 'void', name: 'Vazio', type: 'frame', css: 'avatar-frame-void', theme: 'Gótico' },
-  { id: 'cherry', name: 'Cereja', type: 'frame', css: 'avatar-frame-cherry', theme: 'Japão' },
-  { id: 'lotus', name: 'Lótus', type: 'frame', css: 'avatar-frame-lotus', theme: 'Espiritual' },
-  { id: 'gothicfx', name: 'Aura Gótica', type: 'effect', css: 'profile-effect-gothic', theme: 'Gótico' },
-  { id: 'halloweenfx', name: 'Abóbora', type: 'effect', css: 'profile-effect-halloween', theme: 'Halloween' },
-  { id: 'snow', name: 'Neve', type: 'effect', css: 'profile-effect-snow', theme: 'Natal' },
-  { id: 'sacred', name: 'Sagrado', type: 'effect', css: 'profile-effect-sacred', theme: 'Espiritual' },
-  { id: 'banner-none', name: 'Capa padrão', type: 'banner', css: '', theme: 'Capa' },
-  { id: 'banner-gradient', name: 'Gradiente', type: 'banner', css: 'banner-gradient', theme: 'Capa' },
-  { id: 'banner-stars', name: 'Estrelas', type: 'banner', css: 'banner-stars', theme: 'Capa' },
-  { id: 'banner-aurora', name: 'Aurora', type: 'banner', css: 'banner-aurora', theme: 'Capa' },
-];
+
 
 function applyDecorations() {
   const prefs = loadProfilePrefs();
@@ -1695,55 +1636,7 @@ function applyDecorations() {
   document.querySelectorAll('.rp-banner').forEach(b=>{for(const d of DECORATIONS.filter(d=>d.type==='banner'&&d.css))b.classList.remove(d.css);if(b.closest('[data-user-id]')?.dataset.userId===session?.user.id){const style=DECORATIONS.find(d=>d.type==='banner'&&d.id===prefs.bannerStyle);if(style?.css)b.classList.add(style.css);}});
 }
 
-function openDecorationGallery() {
-  showDialog('Loja de Perfil', container => {
-    const card = el('div', 'profile-edit-card'); container.append(card); const inner = el('div','profile-edit-content'); card.append(inner); container = inner;
-    let prefs = loadProfilePrefs();
-    const categories = [
-      { id: 'frame', label: 'Bordas de avatar' },
-      { id: 'effect', label: 'Efeitos de perfil' },
-      { id: 'banner', label: 'Capas' },
-    ];
-    let current = 'frame';
-    const tabs = el('div', 'shop-tabs');
-    const grid = el('div', 'shop-grid');
-    function render() {
-      grid.replaceChildren();
-      DECORATIONS.filter(d => d.type === current).forEach(d => {
-        const item = el('button', 'shop-item', d.name);item.type='button';item.setAttribute('aria-pressed',String((current==='frame'?prefs.frame:current==='effect'?prefs.profileEffect:prefs.bannerStyle)===d.id));
-        if ((current === 'frame' && prefs.frame === d.id) || (current === 'effect' && prefs.profileEffect === d.id) || (current === 'banner' && prefs.bannerStyle === d.id)) {
-          item.classList.add('selected');
-        }
-        item.onclick = () => {
-          const next = { ...loadProfilePrefs() };
-          if (current === 'frame') next.frame = d.id;
-          else if (current === 'effect') next.profileEffect = d.id;
-          else next.bannerStyle = d.id;
-          saveProfilePrefs(next);prefs=next;
-          applyDecorations();
-          render();
-          toast(d.name + ' aplicado');
-        };
-        grid.append(item);
-      });
-    }
-    categories.forEach(cat => {
-      const tab = el('button', 'shop-tab' + (cat.id === current ? ' active' : ''), cat.label);
-      tab.onclick = () => {
-        current = cat.id;
-        tabs.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        render();
-      };
-      tabs.append(tab);
-    });
-    container.append(tabs,grid,button('Remover efeito de perfil',()=>{saveProfilePrefs({...loadProfilePrefs(),profileEffect:''});prefs=loadProfilePrefs();applyDecorations();render();}));
-    container.append(el('p', 'muted', 'Escolha bordas, efeitos e estilos de capa. As mudanças são aplicadas no seu perfil e salvas localmente. Capas animadas (GIF) podem ser enviadas em Editar perfil.'));
-    render();
-  });
-}
-
-
+function openDecorationGallery(){return openProfileAppearance('openDecorationGallery');}
 // Apply on load and after profile render
 const baseShowProfile = showProfile;
 showProfile = function(p) {
@@ -1812,8 +1705,23 @@ callReactions=initCallReactions({el,button,toast,dialog:showDialog,room:()=>room
 const settingsBeforeAudioDevices=$('settings').onclick;
 $('settings').onclick=()=>{settingsBeforeAudioDevices();audioTools.fields($('dialog-content'));};
 
-initAdminControls({el,button,toast,checked,showDialog,inputField,errorText,apiFetch,
+const adminContext={el,button,toast,checked,showDialog,inputField,errorText,apiFetch,
  state:()=>({db,session,people,siteRoles,activeCommunity,selected}),hasPermission:permission=>hasCommunityPermission(permission),
  refreshRoles:async()=>{siteRoles=await checked(db.from('site_roles').select('*'));renderMembers();},
- moderation:()=>enhancements.showModeration(),audit:()=>enhancements.showAudit(),clearDraft:()=>{drafts.set(draftKey(selected),'');resizeComposer();}
-});
+ reports:()=>enhancements.showReports(),moderation:()=>enhancements.showModeration(),audit:()=>enhancements.showAudit(),clearDraft:()=>{drafts.set(draftKey(selected),'');resizeComposer();}
+};
+
+let adminTask;
+function loadAdmin(){if(!adminTask)adminTask=import('./admin-controls.js').then(module=>module.initAdminControls(adminContext)).catch(error=>{adminTask=null;throw error;});return adminTask;}
+const settingsBeforeLazyAdmin=$('settings').onclick;
+$('settings').onclick=()=>{settingsBeforeLazyAdmin();if(siteRoles.some(r=>r.user_id===session?.user.id)){const box=$('dialog-content').querySelector('.dialog-body')||$('dialog-content');box.append(button('Administração da Órbita',async()=>{const admin=await loadAdmin();admin.management();}));}};
+$('message-form').addEventListener('submit',event=>{const value=$('message-input').value.trim();if(!/^\/(admin|adm|removeradm|silenciar|liberar|banir|desbanir|auditoria|ajuda)(?:\s|$)/i.test(value))return;if(window.orbitaAdminReady)return;event.preventDefault();event.stopImmediatePropagation();const uid=session?.user.id;loadAdmin().then(admin=>{if(session?.user.id===uid&&$('message-input').value.trim()===value)admin.command(value);}).catch(error=>toast(errorText(error)));},true);
+
+initAppUpdates({room:()=>room,dirty:()=>!!$('message-input').value.trim()||!!document.querySelector('.sf-composer textarea')?.value.trim(),beforeReload:()=>saveComposerDraft()});
+
+initThemeAccessibility();
+
+shareReceiver=initShareReceiver({el,button,showDialog,toast,insertText:insertComposer,state:()=>({session,channels,conversations}),conversationName:c=>person(otherUser(c)).display_name,select:target=>target.private?openConversation(target):selectChannel(target),sendFiles:files=>enhancements.sendFiles(files)});
+
+let profileAppearanceTask;
+async function openProfileAppearance(method){const uid=session?.user.id;try{if(!profileAppearanceTask)profileAppearanceTask=import('./profile-appearance.js').then(module=>module.initProfileAppearance({el,button,showDialog,loadProfilePrefs,saveProfilePrefs,applyDecorations,toast,state:()=>({profile})})).catch(error=>{profileAppearanceTask=null;throw error;});const appearance=await profileAppearanceTask;if(session?.user.id===uid)appearance[method]();}catch(error){toast(errorText(error));}}

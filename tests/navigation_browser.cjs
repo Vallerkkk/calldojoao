@@ -6,7 +6,7 @@ const COMM2='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',TEXT3='bbbbbbbb-bbbb-4bbb-8bb
 const extra=`data.communities.push({id:'${COMM2}',name:'Segundo servidor',created_by:'${USER}',invite_only:false});data.channels.push({id:'${TEXT3}',name:'outro-canal',kind:'text',community_id:'${COMM2}',position:0});data.community_members.push({community_id:'${COMM2}',user_id:'${USER}'});if(localStorage.getItem('qa-large-history')==='true')for(let index=71;index<=430;index++)data.messages.push({id:crypto.randomUUID(),channel_id:'${TEXT}',author_id:'${USER}',content:'Histórico extenso '+index,created_at:new Date(Date.now()-index*60000).toISOString(),thread_root:null,reactions:[],poll_votes:[]});`;
 let browser;
 (async()=>{
- browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe'});
+ browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||undefined});
  const report=[];
  for(const mobile of [false,true]){
   const context=await browser.newContext({viewport:{width:mobile?390:1440,height:mobile?844:1000},isMobile:mobile,hasTouch:mobile});

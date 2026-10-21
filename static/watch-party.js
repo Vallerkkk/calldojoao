@@ -1,4 +1,4 @@
-import {youtubeId,youtubeStart} from './media-utils.js?v=youtube-20261020-1';
+import {youtubeId,youtubeStart} from './media-utils.js';
 
 // Commands use a Lamport clock: simultaneous choices converge without a permanent host.
 // Only clock corrections come from the first connected identity. Audio stays local.

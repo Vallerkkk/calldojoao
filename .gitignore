@@ -8,3 +8,6 @@ node_modules/
 desktop/npm-debug.log
 
 supabase/.temp/
+
+static/dist/meta.json
+npm-debug.log
