@@ -116,6 +116,8 @@ async function showSession(next) {
   const previousUser=session?.user.id,transition=++sessionTransition;
   stopConversation();generation++;
   if(previousUser&&previousUser!==next?.user.id){
+    // Close old-account dialogs before any asynchronous cleanup or profile loading.
+    $('app-dialog').close();closeMobileMenu();
     session=null;$('app-view').hidden=true;$('message-list').replaceChildren();
     const old=[socialSubscription,presenceChannel,extraSubscription];socialSubscription=presenceChannel=extraSubscription=null;
     await leaveCall();await Promise.all(old.filter(Boolean).map(channel=>db.removeChannel(channel).catch(()=>{})));await enhancements?.sessionChanged();
