@@ -22,4 +22,3 @@ let browser;
  }
  console.log(JSON.stringify(report));await browser.close();
 })().catch(async e=>{console.error(e);await browser?.close();process.exitCode=1;});
-
