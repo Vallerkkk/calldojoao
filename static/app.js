@@ -915,7 +915,7 @@ function showProfile(p) {
     if (p.id === session?.user.id) {
       actions.append(button('Editar perfil', () => { $('app-dialog').close(); $('settings').click(); }, 'rp-action'));
       actions.append(button('Decorações e efeitos', () => { $('app-dialog').close(); openDecorationGallery(); }, 'rp-action'));
-      actions.append(button('Definir status', () => { $('app-dialog').close(); $('status-popover').classList.remove('hidden'); }, 'rp-action'));
+      actions.append(button('Definir status', () => { $('app-dialog').close();closeMobileMenu();$('status-popover').classList.remove('hidden');requestAnimationFrame(()=>$('status-popover').querySelector('button')?.focus()); }, 'rp-action'));
     } else {
       const f = friendships.find(f => [f.requester_id, f.recipient_id].includes(p.id));
       if (f?.status === 'accepted') actions.append(button('Enviar mensagem', async () => { $('app-dialog').close(); await startConversation(p); }, 'rp-action'));
@@ -1679,3 +1679,6 @@ showProfile = function(p) {
   applyDecorations();
 };
 setTimeout(applyDecorations, 1000);
+
+// The status selector stays reachable when the mobile navigation drawer closes.
+document.body.append($('status-popover'));

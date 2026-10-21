@@ -2745,3 +2745,5 @@ dialog .check-field { margin: 8px 0; }
 @media(prefers-reduced-motion:reduce){.name-effect-shimmer,.name-effect-rainbow,[class*=profile-effect-]{animation:none!important;transition:none!important}}
 
 #toast{pointer-events:none}
+
+#status-popover{position:fixed;left:50%;bottom:max(20px,env(safe-area-inset-bottom));transform:translateX(-50%);width:min(300px,calc(100vw - 24px));z-index:100}
