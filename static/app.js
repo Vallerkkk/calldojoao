@@ -1,5 +1,5 @@
-import { initCallLayout } from './call-layout.js?v=jesus8-20261021-1';
-import { initSocialFeed } from './social-feed.js?v=feed-20261020-2';
+import { initCallLayout } from './call-layout.js?v=jesus9-20261021-1';
+import { initSocialFeed } from './social-feed.js?v=jesus9-20261021-1';
 import { compressImage, relativeTime, safeLink, stickerNames } from './media-utils.js?v=fluency-20261020-2';
 import { initEnhancements } from './enhancements.js?v=devices-20261020-1';
 import { DraftStore, serialToggle } from './runtime-utils.js?v=fluency-20261020-2';
@@ -519,6 +519,8 @@ function onTrack(track, participant, publication) {
     const failed=()=>{status.hidden=false;status.textContent='Não foi possível reproduzir este vídeo. Tente desligar e ligar a câmera.';figure.classList.add('media-loading');};
     for(const [event,handler] of [['loadeddata',ready],['playing',ready],['waiting',waiting],['emptied',waiting],['error',failed]]) {media.addEventListener(event,handler);entry.cleanups.push(()=>media.removeEventListener(event,handler));}
     figure.classList.add('media-loading');frame.append(media,status);figure.append(frame,caption);
+    figure.ondblclick=event=>{if(event.target.closest('button,a,input,select'))return;event.preventDefault();expand.click();};
+    media.title='Clique duas vezes para tela cheia';
     $('media-grid').append(figure);if(media.readyState>=2)ready();
   } else { media.dataset.remoteAudio = 'true';media.dataset.participantId=participant.identity;media.dataset.audioSource=entry.source;document.body.append(media);applyRemoteVolume(entry); }
   syncCallMedia();syncLocalCameraPreview();callLayout?.update();
@@ -883,11 +885,12 @@ async function removeFriend(f){
 function showProfile(p) {
   showDialog(p.display_name, container => {
     const panel = el('div', 'rich-profile');panel.dataset.userId=p.id;
-    // Banner
+    // Banner (taller, Discord-like)
     const banner = el('div', 'rp-banner');
+    banner.style.height = '140px';
     if (p.banner_src) banner.style.backgroundImage = `url("${p.banner_src.replaceAll('"','%22')}")`;
     else if(p.id===session?.user.id&&/^#[0-9a-f]{6}$/i.test(loadProfilePrefs().bannerColor||''))banner.style.background=loadProfilePrefs().bannerColor;
-    else if (p.avatar_color) banner.style.background = `linear-gradient(135deg, ${p.avatar_color}, #1a1528)`;
+    else if (p.avatar_color) banner.style.background=`linear-gradient(135deg, ${p.avatar_color}, #2a1f3d)`;
     panel.append(banner);
     // Avatar + status
     const wrap = el('div', 'rp-avatar-wrap');
@@ -901,15 +904,30 @@ function showProfile(p) {
     const body = el('div', 'rp-body');
     const nameEl = el('h3', 'rp-name', p.display_name || 'Participante');
     body.append(nameEl);
-    body.append(el('div', 'rp-username', '@' + (p.username || 'user') + (p.pronouns ? ' · ' + p.pronouns : '')));
-    if (p.custom_status) body.append(el('div', 'rp-bio', p.custom_status));
+    const userLine = el('div', 'rp-username', '@' + (p.username || 'user') + (p.pronouns ? ' · ' + p.pronouns : ''));
+    body.append(userLine);
+    if (p.custom_status) body.append(el('div', 'rp-bio', '✦ ' + p.custom_status));
     if (p.bio) body.append(el('div', 'rp-bio', p.bio));
     if (p.presence_activity) body.append(el('div', 'rp-username', p.presence_activity));
-    // Voice section placeholder
+    // Member since
+    if (p.created_at) {
+      const since = el('div', 'rp-section');
+      since.append(el('div', 'rp-section-title', 'Membro desde'));
+      since.append(el('div', '', new Date(p.created_at).toLocaleDateString('pt-BR', {day:'numeric', month:'short', year:'numeric'})));
+      body.append(since);
+    }
+    // Voice
     const voiceSec = el('div', 'rp-section');
     voiceSec.append(el('div', 'rp-section-title', 'Em voz'));
-    voiceSec.append(el('div', '', room&&(p.id===room.localParticipant.identity||room.remoteParticipants.has(p.id)) ? 'Conectado a '+(callChannel?.name||'chamada') : 'Sem chamada visível neste servidor'));
+    voiceSec.append(el('div', '', room&&(p.id===room.localParticipant.identity||room.remoteParticipants.has(p.id))?'Conectado a '+(callChannel?.name||'chamada'):'Sem chamada visível neste servidor'));
     body.append(voiceSec);
+    // Feed posts link
+    const feedBtn = button('Ver publicações no Feed', () => {
+      $('app-dialog').close();
+      if (feed && typeof feed.open === 'function') feed.open('profile', { author: p.id });
+      else toast('Feed não disponível');
+    }, 'rp-action');
+    body.append(feedBtn);
     // Actions
     const actions = el('div', 'rp-section');
     if (p.id === session?.user.id) {
@@ -925,6 +943,7 @@ function showProfile(p) {
     body.append(actions);
     panel.append(body);
     container.append(panel);
+    setTimeout(applyDecorations, 30);
   });
 }
 async function sendFriend(p){
@@ -1617,6 +1636,10 @@ const DECORATIONS = [
   { id: 'halloweenfx', name: 'Abóbora', type: 'effect', css: 'profile-effect-halloween', theme: 'Halloween' },
   { id: 'snow', name: 'Neve', type: 'effect', css: 'profile-effect-snow', theme: 'Natal' },
   { id: 'sacred', name: 'Sagrado', type: 'effect', css: 'profile-effect-sacred', theme: 'Espiritual' },
+  { id: 'banner-none', name: 'Capa padrão', type: 'banner', css: '', theme: 'Capa' },
+  { id: 'banner-gradient', name: 'Gradiente', type: 'banner', css: 'banner-gradient', theme: 'Capa' },
+  { id: 'banner-stars', name: 'Estrelas', type: 'banner', css: 'banner-stars', theme: 'Capa' },
+  { id: 'banner-aurora', name: 'Aurora', type: 'banner', css: 'banner-aurora', theme: 'Capa' },
 ];
 
 function applyDecorations() {
@@ -1636,41 +1659,56 @@ function applyDecorations() {
       if (effect?.css) p.classList.add(effect.css);
     }
   });
+  document.querySelectorAll('.rp-banner').forEach(b=>{for(const d of DECORATIONS.filter(d=>d.type==='banner'&&d.css))b.classList.remove(d.css);if(b.closest('[data-user-id]')?.dataset.userId===session?.user.id){const style=DECORATIONS.find(d=>d.type==='banner'&&d.id===prefs.bannerStyle);if(style?.css)b.classList.add(style.css);}});
 }
 
 function openDecorationGallery() {
   showDialog('Loja de Perfil', container => {
-    const prefs = loadProfilePrefs();
-    container.append(button('Remover efeito de perfil',()=>{saveProfilePrefs({...loadProfilePrefs(),profileEffect:''});applyDecorations();$('app-dialog').close();}));
-    const themes = [...new Set(DECORATIONS.map(d => d.theme))];
-    themes.forEach(theme => {
-      container.append(el('h3', '', theme));
-      const grid = el('div');
-      grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin:8px 0 16px;';
-      DECORATIONS.filter(d => d.theme === theme).forEach(d => {
-        const btn = el('button', 'soft-button', d.name);
-        btn.style.cssText = 'padding:8px 6px;font-size:11px;min-height:52px;';
-        btn.title = d.type === 'frame' ? 'Decoração de avatar' : 'Efeito de perfil';
-        if ((d.type === 'frame' && prefs.frame === d.id) || (d.type === 'effect' && prefs.profileEffect === d.id)) {
-          btn.style.borderColor = 'var(--accent)';
-          btn.style.background = 'var(--accent-soft)';
+    let prefs = loadProfilePrefs();
+    const categories = [
+      { id: 'frame', label: 'Bordas de avatar' },
+      { id: 'effect', label: 'Efeitos de perfil' },
+      { id: 'banner', label: 'Capas' },
+    ];
+    let current = 'frame';
+    const tabs = el('div', 'shop-tabs');
+    const grid = el('div', 'shop-grid');
+    function render() {
+      grid.replaceChildren();
+      DECORATIONS.filter(d => d.type === current).forEach(d => {
+        const item = el('button', 'shop-item', d.name);item.type='button';item.setAttribute('aria-pressed',String((current==='frame'?prefs.frame:current==='effect'?prefs.profileEffect:prefs.bannerStyle)===d.id));
+        if ((current === 'frame' && prefs.frame === d.id) || (current === 'effect' && prefs.profileEffect === d.id) || (current === 'banner' && prefs.bannerStyle === d.id)) {
+          item.classList.add('selected');
         }
-        btn.onclick = () => {
+        item.onclick = () => {
           const next = { ...loadProfilePrefs() };
-          if (d.type === 'frame') next.frame = d.id;
-          else next.profileEffect = d.id;
-          saveProfilePrefs(next);
+          if (current === 'frame') next.frame = d.id;
+          else if (current === 'effect') next.profileEffect = d.id;
+          else next.bannerStyle = d.id;
+          saveProfilePrefs(next);prefs=next;
           applyDecorations();
-          $('app-dialog').close();
-          toast((d.type === 'frame' ? 'Decoração' : 'Efeito') + ' aplicado: ' + d.name);
+          render();
+          toast(d.name + ' aplicado');
         };
-        grid.append(btn);
+        grid.append(item);
       });
-      container.append(grid);
+    }
+    categories.forEach(cat => {
+      const tab = el('button', 'shop-tab' + (cat.id === current ? ' active' : ''), cat.label);
+      tab.onclick = () => {
+        current = cat.id;
+        tabs.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        render();
+      };
+      tabs.append(tab);
     });
-    container.append(el('p', 'muted', 'Decorações gratuitas, salvas para seu perfil neste dispositivo.'));
+    container.append(tabs,grid,button('Remover efeito de perfil',()=>{saveProfilePrefs({...loadProfilePrefs(),profileEffect:''});prefs=loadProfilePrefs();applyDecorations();render();}));
+    container.append(el('p', 'muted', 'Escolha bordas, efeitos e estilos de capa. As mudanças são aplicadas no seu perfil e salvas localmente. Capas animadas (GIF) podem ser enviadas em Editar perfil.'));
+    render();
   });
 }
+
 
 // Apply on load and after profile render
 const baseShowProfile = showProfile;
@@ -1682,3 +1720,42 @@ setTimeout(applyDecorations, 1000);
 
 // The status selector stays reachable when the mobile navigation drawer closes.
 document.body.append($('status-popover'));
+
+function callProfileTarget(target){return target instanceof Element?target.closest('.participant .avatar,.participant-name,.media-tile figcaption>span'):null;}
+document.addEventListener('click',event=>{const target=callProfileTarget(event.target),tile=target?.closest('[data-participant-id]');if(tile)showProfile(person(tile.dataset.participantId));});
+let profileTargetsFrame;
+const callProfilesObserver=new MutationObserver(()=>{if(profileTargetsFrame)return;profileTargetsFrame=requestAnimationFrame(()=>{profileTargetsFrame=null;for(const node of $('voice-stage').querySelectorAll('.participant .avatar,.participant-name,.media-tile figcaption>span')){node.tabIndex=0;node.setAttribute('role','button');node.setAttribute('aria-label','Abrir perfil de '+(node.closest('.participant')?.querySelector('.participant-name')?.textContent||node.textContent));}});});
+callProfilesObserver.observe($('voice-stage'),{childList:true,subtree:true});
+$('voice-stage').addEventListener('keydown',event=>{if(['Enter',' '].includes(event.key)&&callProfileTarget(event.target)){event.preventDefault();event.target.click();}});
+
+// ===== Big Picture mode (Steam-style) =====
+function toggleBigPicture(force) {
+  const on = force !== undefined ? force : !document.body.classList.contains('big-picture');
+  document.body.classList.toggle('big-picture', on);
+  localStorage.setItem('orbita-big-picture', on ? '1' : '0');
+  toast(on ? 'Modo Big Picture ativado' : 'Modo Big Picture desativado');
+  let bar = document.querySelector('.bp-bar');
+  if (on && !bar) {
+    bar = document.createElement('div');
+    bar.className = 'bp-bar';
+    const channels=document.createElement('button');channels.textContent='Canais';channels.className='mobile-nav-btn';channels.onclick=()=>document.body.classList.toggle('mobile-menu-open');
+    const exit = document.createElement('button');
+    exit.textContent = 'Sair do Big Picture';
+    exit.onclick = () => toggleBigPicture(false);
+    const settings = document.createElement('button');
+    settings.textContent = 'Configurações';
+    settings.onclick = () => $('settings').click();
+    bar.append(channels,exit,settings);
+    document.querySelector('.main').prepend(bar);
+  } else if (!on && bar) {
+    bar.remove();
+  }
+}
+if (localStorage.getItem('orbita-big-picture') === '1') setTimeout(() => toggleBigPicture(true), 800);
+document.addEventListener('keydown', e => {
+  if (e.altKey && e.key === 'Enter') { e.preventDefault(); toggleBigPicture(); }
+});
+
+
+const settingsBeforeBigPicture=$('settings').onclick;
+$('settings').onclick=function(event){settingsBeforeBigPicture.call(this,event);const box=$('dialog-content').querySelector('.dialog-body');if(!box)return;box.append(el('p','muted','A redução de ruído, o cancelamento de eco e o ganho automático são aplicados pelos controles de Áudio acima. A intensidade é ajustada pelo navegador e pelo dispositivo.'),button('Alternar Big Picture (Alt+Enter)',()=>{$('app-dialog').close();toggleBigPicture();}));};

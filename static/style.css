@@ -2740,6 +2740,132 @@ dialog .check-field { margin: 8px 0; }
 .profile-effect-snow { background:radial-gradient(circle at 20% 30%,#fff 1px,transparent 1px), radial-gradient(circle at 70% 60%,#fff 1px,transparent 1px); background-size:30px 30px; }
 .profile-effect-sacred { background:linear-gradient(135deg,rgba(234,179,8,.12),rgba(255,255,255,.08)); }
 
+/* Animated Discord-style profile */
+.rich-profile { animation: profileIn .25s ease both; }
+@keyframes profileIn { from { opacity:0; transform:translateY(8px) scale(.98); } to { opacity:1; transform:none; } }
+.rich-profile .rp-banner { animation: bannerShimmer 8s ease-in-out infinite; }
+@keyframes bannerShimmer { 50% { filter:brightness(1.08); } }
+.rich-profile .rp-avatar { transition:transform .2s ease, box-shadow .2s ease; }
+.rich-profile:hover .rp-avatar { transform:scale(1.04); }
+.rich-profile .rp-name { animation: nameGlow 3s ease-in-out infinite; }
+@keyframes nameGlow { 50% { text-shadow:0 0 12px rgba(167,139,250,.4); } }
+.rich-profile .rp-action { transition:background .15s ease, transform .15s ease; }
+.rich-profile .rp-action:hover { transform:translateX(2px); }
+
+/* Shop & settings animation */
+#app-dialog .dialog-body { animation: dialogIn .2s ease; }
+@keyframes dialogIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+.decoration-grid button, .soft-button { transition:transform .15s ease, border-color .15s ease; }
+.decoration-grid button:hover, .soft-button:hover { transform:translateY(-2px); }
+
+/* ===== Big Picture mode (Steam-style) ===== */
+body.big-picture {
+  background: #000 !important;
+}
+body.big-picture .app {
+  grid-template-columns: 1fr !important;
+  height: 100dvh;
+}
+body.big-picture .rail,
+body.big-picture .sidebar,
+body.big-picture .members,
+body.big-picture .creators-credit {
+  display: none !important;
+}
+body.big-picture .main {
+  grid-column: 1 / -1 !important;
+  font-size: 18px;
+}
+body.big-picture .chat-header h2,
+body.big-picture .sf-heading h1 {
+  font-size: 28px !important;
+}
+body.big-picture .channel,
+body.big-picture .member,
+body.big-picture .sf-button,
+body.big-picture button {
+  min-height: 56px !important;
+  font-size: 18px !important;
+  padding: 12px 18px !important;
+}
+body.big-picture .message p {
+  font-size: 18px !important;
+  line-height: 1.6;
+}
+body.big-picture .participant,
+body.big-picture .media-tile {
+  min-height: 180px;
+}
+body.big-picture .up-profile-trigger,
+body.big-picture .user-panel {
+  min-height: 70px;
+}
+/* Big Picture exit bar */
+.bp-bar {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: none;
+  gap: 12px;
+  padding: 10px 16px;
+  background: rgba(20,20,30,0.9);
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+body.big-picture .bp-bar { display: flex; }
+.bp-bar button {
+  min-height: 48px !important;
+  font-size: 16px !important;
+}
+
+/* ===== Profile decoration visuals (real borders & effects) ===== */
+.rp-avatar, .up-avatar, .avatar {
+  position: relative;
+}
+/* Frames that actually wrap the avatar */
+.avatar-frame-pearls::after,
+.avatar-frame-gold::after,
+.avatar-frame-neon::after,
+.avatar-frame-cyberpunk::after,
+.avatar-frame-halloween::after,
+.avatar-frame-christmas::after,
+.avatar-frame-gothic::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 1;
+}
+.avatar-frame-pearls::after { box-shadow: 0 0 0 3px #e0f2fe, 0 0 12px #a5f3fc, 0 0 20px #f0abfc; }
+.avatar-frame-gold::after { box-shadow: 0 0 0 3px #fbbf24, 0 0 16px #f59e0b; }
+.avatar-frame-neon::after { box-shadow: 0 0 0 2px #22d3ee, 0 0 14px #a855f7; }
+.avatar-frame-cyberpunk::after { box-shadow: 0 0 0 2px #ff00ff, 0 0 12px #00ffff; }
+.avatar-frame-halloween::after { box-shadow: 0 0 0 3px #f97316, 0 0 14px #ea580c; }
+.avatar-frame-christmas::after { box-shadow: 0 0 0 3px #dc2626, 0 0 10px #16a34a; }
+.avatar-frame-gothic::after { box-shadow: 0 0 0 3px #6b21a8, 0 0 14px #4c1d95; }
+.avatar-frame-eye { border-radius: 40% 40% 45% 45% !important; }
+.avatar-frame-heart { border-radius: 50% 50% 42% 42% !important; }
+
+/* Animated banner support */
+.rp-banner { background-size: cover; background-position: center; }
+.rp-banner.gif-banner { animation: none; }
+
+/* Category tabs in shop */
+.shop-tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.shop-tab { padding: 8px 14px; border-radius: 8px; border: 1px solid #333; background: #1a1a1a; color: #ddd; cursor: pointer; font-size: 13px; }
+.shop-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; }
+.shop-item { padding: 10px; border-radius: 10px; border: 2px solid #333; background: #151515; text-align: center; cursor: pointer; font-size: 11px; color: #ddd; transition: border-color .15s, transform .15s; }
+.shop-item:hover { border-color: var(--accent); transform: translateY(-2px); }
+.shop-item.selected { border-color: var(--accent); background: #1e1a2e; }
+
+.banner-gradient { background: linear-gradient(135deg, #7c3aed, #ec4899, #f59e0b) !important; }
+.banner-stars { background: radial-gradient(circle at 20% 30%, #fff 1px, transparent 1px), radial-gradient(circle at 70% 60%, #fff 1px, transparent 1px), #1a1a2e !important; background-size: 40px 40px, 50px 50px, auto !important; }
+.banner-aurora { background: linear-gradient(135deg, #22c55e, #3b82f6, #a855f7) !important; }
+
 .profile-color-preview{min-height:100px;border-radius:12px;padding:24px;color:#fff;text-shadow:0 1px 5px #0009;background:#7c5cff;margin-bottom:16px}
 .rich-profile{position:relative;isolation:isolate;width:100%}.rp-action{min-height:44px}.rich-profile .rp-avatar{position:relative;isolation:isolate}
 @media(prefers-reduced-motion:reduce){.name-effect-shimmer,.name-effect-rainbow,[class*=profile-effect-]{animation:none!important;transition:none!important}}
@@ -2747,3 +2873,11 @@ dialog .check-field { margin: 8px 0; }
 #toast{pointer-events:none}
 
 #status-popover{position:fixed;left:50%;bottom:max(20px,env(safe-area-inset-bottom));transform:translateX(-50%);width:min(300px,calc(100vw - 24px));z-index:100}
+
+.shop-item,.shop-tab{min-height:44px}.bp-bar{position:relative;left:auto;bottom:auto;transform:none;flex-shrink:0;justify-content:center;flex-wrap:wrap;border-radius:0;z-index:10}
+body.big-picture .main{min-height:0}body.big-picture .main>.mobile-nav-btn{display:inline-flex}
+body.big-picture.mobile-menu-open .rail{display:flex!important;position:fixed;inset:0 auto 0 0;width:64px;z-index:61}
+body.big-picture.mobile-menu-open .sidebar{display:flex!important;position:fixed;inset:0 auto 0 64px;width:230px;z-index:60}
+body.big-picture #voice-view .voice-controls{flex-wrap:wrap;max-width:100%}body.big-picture #voice-view .call-control-group>.call-icon{padding:6px!important}
+@media(prefers-reduced-motion:reduce){.rich-profile,.rich-profile *,#app-dialog .dialog-body,.shop-item,.soft-button{animation:none!important;transition:none!important}}
+body.big-picture .bp-bar .mobile-nav-btn{display:inline-flex!important}

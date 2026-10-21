@@ -83,3 +83,5 @@ body.camera-active #voice-view .voice-controls .vc-btn{min-width:48px;min-height
 body.camera-active #voice-view #camera-switch{min-width:88px;width:auto;padding-inline:10px;font-size:12px}
 
 @media(max-width:1080px){body:has(#voice-view:not([hidden])) #members-sidebar{display:none!important}}
+
+#voice-view .media-tile figcaption>span[role=button]{pointer-events:auto;cursor:pointer}#voice-view [role=button]:focus-visible{outline:3px solid #98b6ff;outline-offset:3px}

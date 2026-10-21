@@ -56,7 +56,9 @@ export function initSocialFeed(ctx) {
     article.append(rich(post.content));
     if(post.updated_at)article.append(el('small','sf-muted','Editado'));
     if(post.media?.length){const media=el('div','sf-media');media.dataset.count=post.media.length;article.append(media);
-      for(const path of post.media){const video=/\.(mp4|webm)$/i.test(path),node=el(video?'video':'img');node.setAttribute('aria-label',video?'Vídeo da publicação':'Imagem da publicação');if(video){node.controls=true;node.preload='none';node.playsInline=true;}else{node.alt='Imagem da publicação';node.loading='lazy';node.decoding='async';}media.append(node);
+      for(const path of post.media){const video=/\.(mp4|webm)$/i.test(path),node=el(video?'video':'img');node.setAttribute('aria-label',video?'Vídeo da publicação':'Imagem da publicação');if(video){node.controls=true;node.preload='metadata';node.playsInline=true;node.muted=true;
+  node.addEventListener('loadeddata',()=>{try{if(node.videoWidth){const c=document.createElement('canvas');const scale=Math.min(1,640/node.videoWidth,360/node.videoHeight);c.width=Math.max(1,Math.round(node.videoWidth*scale));c.height=Math.max(1,Math.round(node.videoHeight*scale));c.getContext('2d').drawImage(node,0,0,c.width,c.height);node.poster=c.toDataURL('image/jpeg',0.7);}}catch(e){}});
+}else{node.alt='Imagem da publicação';node.loading='lazy';node.decoding='async';}media.append(node);
         const account=accountEpoch;signed(path).then(src=>{if(src&&account===accountEpoch&&node.isConnected)node.src=src;else if(node.isConnected)node.replaceWith(el('p','sf-muted','Anexo indisponível. Atualize o feed para tentar novamente.'));});
       }
     }
