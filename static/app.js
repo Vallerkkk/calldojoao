@@ -913,7 +913,7 @@ function showProfile(p) {
     const panel = el('div', 'rich-profile');panel.dataset.userId=p.id;
     // Banner (taller, Discord-like)
     const banner = el('div', 'rp-banner');
-    banner.style.height = '140px';
+    banner.style.height = '160px';
     if (p.banner_src) banner.style.backgroundImage = `url("${p.banner_src.replaceAll('"','%22')}")`;
     else if(p.id===session?.user.id&&/^#[0-9a-f]{6}$/i.test(loadProfilePrefs().bannerColor||''))banner.style.background=loadProfilePrefs().bannerColor;
     else if (p.avatar_color) banner.style.background=`linear-gradient(135deg, ${p.avatar_color}, #2a1f3d)`;
@@ -1007,7 +1007,19 @@ function incomingCall(event){
 $('decline-call').onclick=()=>{$('incoming-call').hidden=true;};
 $('friends-nav').onclick=showFriends;
 $('settings').onclick=()=>showDialog('Seu perfil e áudio',container=>{
-  const form=el('form');const name=inputField(form,'Nome de exibição',profile.display_name,50),username=inputField(form,'Nome de usuário (3–24 letras, números ou _)',profile.username,24),bio=inputField(form,'Sobre você',profile.bio,160),pronouns=inputField(form,'Pronomes',profile.pronouns,32),activity=inputField(form,'Atividade (ex.: Jogando Minecraft / Ouvindo música)',profile.presence_activity,80),color=inputField(form,'Cor do perfil',profile.avatar_color,7);color.type='color';
+  const card = el('div', 'profile-edit-card');
+  const bannerPrev = el('div', 'rp-banner-preview');
+  if (profile.banner_src) bannerPrev.style.backgroundImage = `url("${profile.banner_src.replaceAll('"','%22')}")`;
+  else if (/^#[0-9a-f]{6}$/i.test(loadProfilePrefs().bannerColor||'')) bannerPrev.style.background = loadProfilePrefs().bannerColor;
+  else if (profile.avatar_color) bannerPrev.style.background = `linear-gradient(135deg, ${profile.avatar_color}, #2a1f3d)`;
+  card.append(bannerPrev);
+  const wrap = el('div', 'rp-avatar-wrap');
+  const av = el('div', 'rp-avatar');
+  setAvatar(av, profile);
+  wrap.append(av);
+  card.append(wrap);
+  const form=el('form');
+  const name=inputField(form,'Nome de exibição',profile.display_name,50),username=inputField(form,'Nome de usuário (3–24 letras, números ou _)',profile.username,24),bio=inputField(form,'Sobre você',profile.bio,160),pronouns=inputField(form,'Pronomes',profile.pronouns,32),activity=inputField(form,'Atividade (ex.: Jogando Minecraft / Ouvindo música)',profile.presence_activity,80),color=inputField(form,'Cor do perfil',profile.avatar_color,7);color.type='color';
   const avatarFile=profileFileField(form,'Foto do perfil',profile.avatar_src),bannerFile=profileFileField(form,'Banner (pode ser GIF animado)',profile.banner_src);
   form.append(el('h3','','Áudio'));
   form.append(el('p','muted','Ajustes aplicados ao microfone. O navegador e o dispositivo podem limitar o efeito real.'));
@@ -1017,7 +1029,7 @@ $('settings').onclick=()=>showDialog('Seu perfil e áudio',container=>{
   const agcLabel=el('label','check-field');const agcCheck=el('input');agcCheck.type='checkbox';agcCheck.checked=autoGainControl;agcLabel.append(agcCheck,document.createTextNode('Controle automático de ganho'));form.append(agcLabel,el('p','muted','Mantém o volume da sua voz mais estável.'));
 
   const pttLabel=el('label','check-field'),ptt=el('input');ptt.type='checkbox';ptt.checked=pushToTalk;pttLabel.append(ptt,document.createTextNode('Pressionar Espaço ou Segurar para falar'));form.append(pttLabel,el('p','muted','Com esta opção ativa, o microfone fica fechado até você segurar o botão Falar ou a tecla Espaço na chamada.'));
-  const save=el('button','primary','Salvar alterações');save.type='submit';form.append(save);container.append(form);
+  const save=el('button','primary','Salvar alterações');save.type='submit';form.append(save);card.append(form); container.append(card);
   form.onsubmit=async event=>{event.preventDefault();save.disabled=true;const uid=session.user.id,prior={...profile},created=[];let saved=false;try{
     const avatarUrl=avatarFile.files[0]?await uploadProfileAsset(avatarFile.files[0],'avatar'):prior.avatar_url||'';if(avatarUrl!==prior.avatar_url)created.push(avatarUrl);
     const bannerUrl=bannerFile.files[0]?await uploadProfileAsset(bannerFile.files[0],'banner'):prior.banner_url||'';if(bannerUrl!==prior.banner_url)created.push(bannerUrl);
@@ -1337,7 +1349,7 @@ const baseLoadSocial=loadSocial;loadSocial=async()=>{await baseLoadSocial();upda
 const baseSettings=$('settings').onclick;
 $('settings').onclick=()=>{
   baseSettings();const container=$('dialog-content'),appearance=el('div');
-  const themeLabel=el('label','field','Tema'),theme=el('select');for(const [key,label]of[['orbita','Violeta Órbita'],['blurple','Blurple'],['emerald','Emerald'],['nitro','Pink']]){const option=el('option','',label);option.value=key;theme.append(option);}theme.value=localStorage.getItem('orbita-theme')||'orbita';themeLabel.append(theme);appearance.append(themeLabel);
+  const themeLabel=el('label','field','Tema'),theme=el('select');for(const [key,label]of[['orbita','Violeta Órbita'],['blurple','Blurple'],['emerald','Emerald'],['nitro','Pink'],['cyber','Cyber Neon'],['forest','Floresta'],['ocean','Oceano'],['sunset','Pôr do Sol'],['midnight','Meia-Noite'],['blood','Sangue'],['gold','Ouro'],['sakura','Sakura']]){const option=el('option','',label);option.value=key;theme.append(option);}theme.value=localStorage.getItem('orbita-theme')||'orbita';theme.setAttribute('aria-label','Tema');themeLabel.append(theme);appearance.append(themeLabel);
   const densityLabel=el('label','field','Densidade'),density=el('select');for(const value of ['cozy','compact']){const option=el('option','',value==='cozy'?'Confortável':'Compacta');option.value=value;density.append(option);}density.value=localStorage.getItem('orbita-density')||'cozy';densityLabel.append(density);appearance.append(densityLabel);
   for(const [input,key]of[[theme,'theme'],[density,'density']])input.onchange=()=>{localStorage.setItem('orbita-'+key,input.value);document.body.dataset[key]=input.value;};
   container.append(appearance,button('Aceitar convite de criador',()=>showCreatorInvite()),button('Sobre esta versão',()=>openCloud()));
@@ -1532,6 +1544,7 @@ function applyProfileStyles() {
 }
 function openProfileCustomizer() {
   showDialog('Personalizar perfil', container => {
+    const card = el('div', 'profile-edit-card'); container.append(card); const inner = el('div','profile-edit-content'); card.append(inner); container = inner;
     const prefs = loadProfilePrefs();
     const font = el('select');
     font.innerHTML = '<option value="">Padrão</option><option value="inter">Inter</option><option value="mono">Monospace</option><option value="serif">Serif</option><option value="display">Display</option>';
@@ -1694,6 +1707,7 @@ function applyDecorations() {
 
 function openDecorationGallery() {
   showDialog('Loja de Perfil', container => {
+    const card = el('div', 'profile-edit-card'); container.append(card); const inner = el('div','profile-edit-content'); card.append(inner); container = inner;
     let prefs = loadProfilePrefs();
     const categories = [
       { id: 'frame', label: 'Bordas de avatar' },

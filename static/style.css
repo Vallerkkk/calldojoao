@@ -62,6 +62,118 @@ body[data-theme="nitro"] {
   --accent-soft: rgba(236,72,153,0.16);
   --accent-glow: rgba(236,72,153,0.38);
 }
+body[data-theme="cyber"] {
+  --bg-deep: #05050f;
+  --bg-rail: #0a0a18;
+  --bg-sidebar: #101020;
+  --bg-main: #161628;
+  --bg-elevated: #1e1e38;
+  --accent: #00f0ff;
+  --accent-hover: #66f7ff;
+  --accent-2: #ff00aa;
+  --accent-soft: rgba(0,240,255,0.15);
+  --accent-glow: rgba(0,240,255,0.45);
+  --text: #e0f7ff;
+  --text-dim: #8aa0b8;
+}
+body[data-theme="forest"] {
+  --bg-deep: #0a120c;
+  --bg-rail: #0f1a12;
+  --bg-sidebar: #152018;
+  --bg-main: #1c2820;
+  --bg-elevated: #243028;
+  --accent: #22c55e;
+  --accent-hover: #4ade80;
+  --accent-2: #84cc16;
+  --accent-soft: rgba(34,197,94,0.16);
+  --accent-glow: rgba(34,197,94,0.38);
+  --text: #e8f5e9;
+  --text-dim: #a5d6a7;
+}
+body[data-theme="ocean"] {
+  --bg-deep: #061018;
+  --bg-rail: #0a1824;
+  --bg-sidebar: #102030;
+  --bg-main: #162838;
+  --bg-elevated: #1e3448;
+  --accent: #0ea5e9;
+  --accent-hover: #38bdf8;
+  --accent-2: #06b6d4;
+  --accent-soft: rgba(14,165,233,0.16);
+  --accent-glow: rgba(14,165,233,0.4);
+  --text: #e0f2fe;
+  --text-dim: #7dd3fc;
+}
+body[data-theme="sunset"] {
+  --bg-deep: #1a0e0a;
+  --bg-rail: #241410;
+  --bg-sidebar: #2e1a14;
+  --bg-main: #382018;
+  --bg-elevated: #4a2820;
+  --accent: #f97316;
+  --accent-hover: #fb923c;
+  --accent-2: #ef4444;
+  --accent-soft: rgba(249,115,22,0.16);
+  --accent-glow: rgba(249,115,22,0.4);
+  --text: #fff7ed;
+  --text-dim: #fdba74;
+}
+body[data-theme="midnight"] {
+  --bg-deep: #000008;
+  --bg-rail: #050510;
+  --bg-sidebar: #0a0a18;
+  --bg-main: #101020;
+  --bg-elevated: #181828;
+  --accent: #a78bfa;
+  --accent-hover: #c4b5fd;
+  --accent-2: #818cf8;
+  --accent-soft: rgba(167,139,250,0.16);
+  --accent-glow: rgba(167,139,250,0.42);
+  --text: #f5f3ff;
+  --text-dim: #c4b5fd;
+}
+body[data-theme="blood"] {
+  --bg-deep: #120808;
+  --bg-rail: #1a0c0c;
+  --bg-sidebar: #221010;
+  --bg-main: #2a1414;
+  --bg-elevated: #3a1c1c;
+  --accent: #dc2626;
+  --accent-hover: #ef4444;
+  --accent-2: #991b1b;
+  --accent-soft: rgba(220,38,38,0.18);
+  --accent-glow: rgba(220,38,38,0.45);
+  --text: #fef2f2;
+  --text-dim: #fca5a5;
+}
+body[data-theme="gold"] {
+  --bg-deep: #12100a;
+  --bg-rail: #1a1610;
+  --bg-sidebar: #221c14;
+  --bg-main: #2a2218;
+  --bg-elevated: #3a2e20;
+  --accent: #fbbf24;
+  --accent-hover: #fcd34d;
+  --accent-2: #d97706;
+  --accent-soft: rgba(251,191,36,0.16);
+  --accent-glow: rgba(251,191,36,0.4);
+  --text: #fffbeb;
+  --text-dim: #fde68a;
+}
+body[data-theme="sakura"] {
+  --bg-deep: #160e14;
+  --bg-rail: #1e121a;
+  --bg-sidebar: #261820;
+  --bg-main: #2e1e28;
+  --bg-elevated: #3e2834;
+  --accent: #f472b6;
+  --accent-hover: #f9a8d4;
+  --accent-2: #ec4899;
+  --accent-soft: rgba(244,114,182,0.16);
+  --accent-glow: rgba(244,114,182,0.4);
+  --text: #fdf2f8;
+  --text-dim: #fbcfe8;
+}
 body[data-density="compact"] {
   --msg-gap: 1px;
 }
@@ -2548,13 +2660,15 @@ dialog .check-field { margin: 8px 0; }
   border-radius: 12px;
   overflow: hidden;
   color: #fff;
-  max-width: 340px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
 }
 .rich-profile .rp-banner {
-  height: 120px;
+  height: 160px;
   background: linear-gradient(135deg, #4c1d95, #7c3aed 40%, #a78bfa);
   background-size: cover;
-  background-position: center;
+  background-position: center top;
   position: relative;
 }
 .rich-profile .rp-avatar-wrap {
@@ -2564,7 +2678,7 @@ dialog .check-field { margin: 8px 0; }
   width: 72px;
   height: 72px;
 }
-.rich-profile .rp-avatar {
+.rich-profile .rp-avatar, .profile-edit-card .rp-avatar {
   width: 72px;
   height: 72px;
   border-radius: 50%;
@@ -2881,3 +2995,95 @@ body.big-picture.mobile-menu-open .sidebar{display:flex!important;position:fixed
 body.big-picture #voice-view .voice-controls{flex-wrap:wrap;max-width:100%}body.big-picture #voice-view .call-control-group>.call-icon{padding:6px!important}
 @media(prefers-reduced-motion:reduce){.rich-profile,.rich-profile *,#app-dialog .dialog-body,.shop-item,.soft-button{animation:none!important;transition:none!important}}
 body.big-picture .bp-bar .mobile-nav-btn{display:inline-flex!important}
+
+
+/* Profile menu dialogs – match rich-profile aesthetic */
+#app-dialog:has(.rich-profile) {
+  width: min(420px, calc(100vw - 24px));
+  padding: 0;
+  overflow-y: auto;
+  max-height: calc(100dvh - 24px);
+  background: transparent;
+  border: none;
+  box-shadow: 0 18px 60px #000c;
+}
+#app-dialog:has(.rich-profile) .dialog-header {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  background: none;
+  border: none;
+  padding: 0;
+}
+#app-dialog:has(.rich-profile) .dialog-header h2 {
+  display: none;
+}
+#app-dialog:has(.rich-profile) #dialog-close {
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: none;
+  font-size: 18px;
+}
+#app-dialog:has(.rich-profile) .dialog-body {
+  padding: 0;
+  margin: 0;
+}
+
+/* Edit / settings form styled like profile card */
+.profile-edit-card {
+  background: linear-gradient(180deg, #2a1f3d 0%, #1a1528 40%, #12101a 100%);
+  border-radius: 12px;
+  overflow: hidden;
+  color: #fff;
+  max-width: 420px;
+  margin: 0 auto;
+}
+.profile-edit-card .rp-banner-preview {
+  height: 120px;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+}
+.profile-edit-card .rp-avatar-wrap {
+  margin-top: -40px;
+  margin-left: 20px;
+}
+.profile-edit-card form {
+  padding: 12px 16px 16px;
+}
+.profile-edit-card label.field {
+  display: block;
+  margin: 10px 0;
+  font-size: 12px;
+  color: #aaa;
+}
+.profile-edit-card input:not([type="checkbox"]), .profile-edit-card select, .profile-edit-card textarea {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #fff;
+}
+.profile-edit-card .rp-section {
+  background: rgba(255,255,255,0.04);
+  border-radius: 8px;
+  padding: 10px;
+  margin: 12px 0;
+}
+.profile-edit-card h3 {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #ccc;
+}
+.profile-edit-card .rp-avatar.has-photo{color:transparent;text-shadow:none}
+.profile-edit-content{padding:16px}

@@ -101,3 +101,10 @@ A foto no painel inferior preenche o círculo de 34 px, com recorte central, sem
 Vídeos enviados ao feed, aos canais, às DMs e às threads têm player inline com reprodução automática sem som ao aparecer na tela. Os controles nativos permitem ativar áudio e pausar. Uma pausa manual é respeitada; sair da área visível ou ocultar a página pausa a reprodução para economizar recursos. Remover a mensagem, fechar a thread ou trocar de conta libera a mídia. Chamadas e YouTube mantêm seus controles independentes. Se o navegador bloquear a reprodução automática, o botão de reproduzir continua disponível.
 
 `tests/media_autoplay_browser.cjs` usa um vídeo WebM gerado no navegador e contas simuladas para verificar reprodução real, mute inicial, pausa, navegação, limpeza de mídia e avatar no PC e no celular.
+
+
+### Atualização Jesus (11)
+
+Importados os oito temas adicionais, os cartões de edição e personalização de perfil, banners de 160 px e o enquadramento ampliado das mídias do feed. A integração preserva o avatar inferior corrigido, a reprodução automática sem som, os controles de chamada e a recuperação de sessão. Diálogos de perfil permitem rolagem em telas baixas e fechamento com área de toque de 44 px; o editor mantém checkboxes no tamanho correto e avatar com dimensões definidas.
+
+`tests/jesus11_browser.cjs` verifica cartões, dimensões, temas e persistência no PC e celular. O pacote enviado não altera o backend ou o banco de dados. Arquivos locais de ambiente e dependências do ZIP não entram na publicação.
