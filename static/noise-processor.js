@@ -8,7 +8,7 @@ export function createNoiseProcessor(){
         this.context=new Audio({sampleRate:48000});
         if(!this.context.audioWorklet)throw Error('AudioWorklet indisponível');
         const [{RnnoiseWorkletNode},bytes]=await Promise.all([
-          import('./vendor/rnnoise-0.4.1/index.js'),
+          import('/static/vendor/rnnoise-0.4.1/index.js'),
           binary||(binary=fetch('/static/vendor/rnnoise-0.4.1/rnnoise.wasm').then(r=>{if(!r.ok)throw Error('Filtro indisponível');return r.arrayBuffer();}).catch(e=>{binary=null;throw e;})),
           this.context.audioWorklet.addModule('/static/vendor/rnnoise-0.4.1/worklet.js'),
         ]);

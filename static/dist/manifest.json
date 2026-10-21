@@ -1,8 +1,8 @@
 {
-  "version": "b5d754902c6ce41f",
-  "entry": "/static/dist/app-3KSZCB7G.js",
+  "version": "0e032bb07dbc5c67",
+  "entry": "/static/dist/app-XTGTQD57.js",
   "files": [
-    "/static/dist/app-3KSZCB7G.js",
+    "/static/dist/app-XTGTQD57.js",
     "/static/dist/call-layout-88b7b573d0b46af2.css",
     "/static/dist/chunk-admin-controls-D2R3JBCC.js",
     "/static/dist/chunk-chunk-GOL67HMX.js",
@@ -37,7 +37,7 @@
     "/static/themes.css": "/static/dist/themes-798ce3001de508c9.css"
   },
   "integrity": {
-    "/static/dist/app-3KSZCB7G.js": "ce0094da1744e65d868aab04170c5c324aefd003efc9753222d03879b8e973bd",
+    "/static/dist/app-XTGTQD57.js": "61d0016535a3ccaa00f258a64b60f4cea099437a68a666c17d020a6c75cb2ac0",
     "/static/dist/call-layout-88b7b573d0b46af2.css": "88b7b573d0b46af2abf70f138f492de76ca323af99dba2d5a776f8f44a798ea5",
     "/static/dist/chunk-admin-controls-D2R3JBCC.js": "6178616b55508ab1cb9abd7fe0039cf5d1b7ae89504069667742aa3c633bf4e5",
     "/static/dist/chunk-chunk-GOL67HMX.js": "ff9e0dca4365b7b1581e7275f3c6dbcf1474ffb874d81a3375ecf7a835dbaa6f",
