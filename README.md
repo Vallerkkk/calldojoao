@@ -39,3 +39,12 @@ Bloqueios escondem publicações nas duas direções; denúncias são privadas e
 As duas migrações `supabase/migrations/*_social_feed*.sql` precisam estar aplicadas antes de publicar o frontend. Foram aplicadas neste projeto pela integração do Supabase. Elas só adicionam o feed e seu bucket, sem alterar tabelas de chat. Não é necessária nova chave nem assinatura de serviço. Os limites dos planos gratuitos existentes continuam valendo.
 
 Validação: `tests/feed_browser.cjs` cobre PC e celular com uma conta simulada; `tests/social_feed_access.sql` valida RLS, mídia e notificações com dados temporários, terminando em ROLLBACK. Os testes de navegador usam as mesmas dependências locais dos demais testes e o endereço ORBITA_TEST_URL (padrão http://127.0.0.1:8766/).
+
+
+## Ouvir juntos com vídeos do YouTube
+
+Entre em uma chamada, abra Ouvir juntos e cole um link do YouTube. São aceitos links normais, curtos, Shorts, transmissões /live/ e YouTube Music, inclusive com tempo inicial no link. O primeiro orador a selecionar um vídeo controla a reprodução; Reproduzir, Pausar e mudanças de posição são sincronizados pela conexão LiveKit já existente. Quem chega depois recebe o vídeo e a posição atuais. Quando o anfitrião sai, o controle passa para um participante que pode transmitir.
+
+Cada participante pode precisar tocar em Reproduzir áudio aqui devido às regras de reprodução automática do navegador/celular. Não há download nem retransmissão de arquivos do YouTube: cada dispositivo usa o player oficial incorporado. Vídeos privados, removidos ou com incorporação bloqueada pelo autor não funcionam no player; o painel mostra o motivo e oferece Abrir vídeo no YouTube. Não é necessária chave da YouTube Data API nem serviço pago.
+
+A política Referrer-Policy envia somente a origem em solicitações externas HTTPS, permitindo ao YouTube identificar o site sem transmitir o caminho ou os parâmetros da página. A validação de inicialização usa o painel como referência porque a API substitui o elemento original por um iframe. Testes: tests/youtube-links.test.mjs e tests/youtube_watch_browser.cjs, incluindo dois participantes, PC/celular, troca de vídeo, chegada tardia, pausa, erros, nova tentativa, transferência do controle e saída da chamada.

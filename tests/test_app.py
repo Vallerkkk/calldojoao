@@ -101,7 +101,9 @@ class AppTests(unittest.TestCase):
         self.assertIn('no-store',worker.headers['cache-control'])
 
     def test_home_and_static_assets_are_served(self):
-        self.assertEqual(self.client.get('/').status_code, 200)
+        home=self.client.get('/')
+        self.assertEqual(home.status_code,200)
+        self.assertEqual(home.headers['referrer-policy'],'strict-origin-when-cross-origin')
         self.assertEqual(self.client.get('/static/app.js').status_code, 200)
         self.assertEqual(self.client.get('/static/style.css').status_code, 200)
         self.assertEqual(self.client.get('/.env').status_code, 404)

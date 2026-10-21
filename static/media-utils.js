@@ -38,15 +38,28 @@ export function relativeTime(value, now = Date.now()) {
   return formatter.format(seconds, 'second');
 }
 
+function youtubeURL(value) {
+  const text=String(value||'').trim();
+  const url=new URL(/^(?:(?:www|m|music)\.)?youtube\.com\/|^youtu\.be\//i.test(text)?'https://'+text:text);
+  if(!['https:','http:'].includes(url.protocol)||url.username||url.password)return null;
+  return url;
+}
 export function youtubeId(value) {
   try {
-    const url = new URL(value);
-    if (url.protocol !== 'https:') return null;
-    let id;
-    if (url.hostname === 'youtu.be') id = url.pathname.slice(1);
-    else if (['www.youtube.com', 'youtube.com', 'm.youtube.com'].includes(url.hostname)) id = url.searchParams.get('v') || url.pathname.match(/^\/(?:shorts|embed)\/([^/]+)/)?.[1];
-    return /^[A-Za-z0-9_-]{11}$/.test(id || '') ? id : null;
-  } catch { return null; }
+    const url=youtubeURL(value);if(!url)return null;let id;
+    if(url.hostname==='youtu.be')id=url.pathname.split('/')[1];
+    else if(['www.youtube.com','youtube.com','m.youtube.com','music.youtube.com'].includes(url.hostname))id=url.pathname==='/watch'?url.searchParams.get('v'):url.pathname.match(/^\/(?:shorts|embed|live)\/([^/]+)\/?$/)?.[1];
+    else if(['www.youtube-nocookie.com','youtube-nocookie.com'].includes(url.hostname))id=url.pathname.match(/^\/embed\/([^/]+)\/?$/)?.[1];
+    return /^[A-Za-z0-9_-]{11}$/.test(id||'')?id:null;
+  }catch{return null;}
+}
+export function youtubeStart(value) {
+  try {
+    if(!youtubeId(value))return 0;const url=youtubeURL(value),raw=url.searchParams.get('t')||url.searchParams.get('start')||new URLSearchParams(url.hash.slice(1)).get('t')||'0';
+    if(/^\d+$/.test(raw))return Math.min(86400,Number(raw));
+    const parts=raw.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/i);
+    return parts?Math.min(86400,Number(parts[1]||0)*3600+Number(parts[2]||0)*60+Number(parts[3]||0)):0;
+  }catch{return 0;}
 }
 
 export const stickerNames = ['orbita', 'ola', 'boa', 'festa'];

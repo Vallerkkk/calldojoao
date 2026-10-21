@@ -45,7 +45,8 @@ def settings():
 async def headers(request, call_next):
     response = await call_next(request)
     response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['Referrer-Policy'] = 'same-origin'
+    # YouTube requires the embedding site's origin (error 153 without Referer).
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['Content-Security-Policy'] = "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
     response.headers['Permissions-Policy'] = 'camera=(self), microphone=(self), display-capture=(self)'

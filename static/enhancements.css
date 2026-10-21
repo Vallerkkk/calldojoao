@@ -32,3 +32,5 @@ body[data-color-mode=light] #btn-free-setup{color:#146c43}body[data-color-mode=l
 
 .message-target{outline:2px solid var(--accent);outline-offset:2px}
 .up-controls #logout{display:none}.server-header h1{min-width:0;flex:1}.server-header #sidebar-server-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.server-header .boost-pill{display:none}
+
+.watch-controls{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.watch-panel iframe{min-height:200px}.watch-panel>a{display:inline-block;margin-top:10px}.watch-panel>button{margin:4px 6px 4px 0;min-height:44px}
