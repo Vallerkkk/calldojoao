@@ -56,6 +56,17 @@ Cada participante remoto tem dois controles de volume: Microfone e Transmissão 
 
 A recepção usa o controle de volume por faixa do LiveKit e Web Audio quando disponível, inclusive para permitir ajuste em navegadores móveis que limitam o volume do elemento HTML. O áudio da transmissão precisa ser enviado por quem está compartilhando a tela; o controle não cria áudio quando a transmissão não o inclui.
 
-No celular, a escolha Frontal/Traseira aparece junto ao botão da câmera. É possível escolher com o vídeo desligado, sem abrir a câmera, ou alternar durante a chamada. A preferência é salva no dispositivo; a prévia local frontal é espelhada, e a traseira não. Se a troca falhar, o aplicativo tenta restaurar a câmera anterior. O recurso depende das câmeras e permissões disponíveis no navegador/aparelho.
+A escolha Frontal/Traseira fica na seta ao lado do botão da câmera (Opções de câmera). É possível escolher com o vídeo desligado, sem abrir a câmera, ou alternar durante a chamada. A preferência é salva no dispositivo; a prévia local frontal é espelhada, e a traseira não. Se a troca falhar, o aplicativo tenta restaurar a câmera anterior. O recurso depende das câmeras e permissões disponíveis no navegador/aparelho.
 
 Validação automatizada: tests/call_controls_browser.cjs cobre volumes independentes, zero, recuperação ao reconectar, ensurdecer/restaurar, preferências anteriores, foco, escolha/troca de câmera, recuperação de falha e ligar novamente com outra câmera. Os dispositivos e faixas são simulados; é recomendável verificar a troca também em um aparelho físico com duas câmeras.
+
+
+## Grade e controles das chamadas
+
+As chamadas usam um palco preto com grade adaptativa, nomes sobrepostos e contorno verde de quem está falando. Cada pessoa ocupa um quadro: ao ativar a câmera, o vídeo substitui o avatar. Cada tela compartilhada ocupa um quadro adicional. A grade considera a altura disponível no PC e permite rolagem no celular sem esconder os controles.
+
+A barra inferior reúne microfone, câmera, transmissão, reação, efeitos sonoros, mais opções e desconexão. As setas abrem as opções de áudio, câmera frontal/traseira e inclusão do áudio da tela. O menu de três pontos de cada participante (também acessível com clique direito) permite ajustar separadamente microfone e transmissão. As preferências de áudio continuam locais ao dispositivo.
+
+O canto inferior direito oferece vídeo flutuante e tela cheia da chamada; cada vídeo também tem esses atalhos. O menu superior abre canais e conversas. O botão de conversa mantém a chamada conectada e o atalho “Voltar à chamada” permite retornar, inclusive no celular. Ouvir juntos com YouTube permanece no topo e em Mais opções.
+
+Validação: tests/call_layout_browser.cjs cobre a grade 2×2, ausência de quadros duplicados, nomes acessíveis, menus, microfone, câmera, transmissão, áudio da tela, ensurdecer, reações, efeitos, convites, tela cheia, encaminhamento ao Picture-in-Picture, navegação sem desconexão e limpeza. A suíte roda em tamanhos de PC e celular com usuários e dispositivos simulados. Os testes de ciclo de mídia, volumes/câmeras, YouTube e navegação continuam separados.

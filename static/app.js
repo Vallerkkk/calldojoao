@@ -1,3 +1,4 @@
+import { initCallLayout } from './call-layout.js?v=call-layout-20261021-1';
 import { initSocialFeed } from './social-feed.js?v=feed-20261020-2';
 import { compressImage, relativeTime, safeLink, stickerNames } from './media-utils.js?v=fluency-20261020-2';
 import { initEnhancements } from './enhancements.js?v=devices-20261020-1';
@@ -5,7 +6,7 @@ import { DraftStore, serialToggle } from './runtime-utils.js?v=fluency-20261020-
 import { ConversationCache, MessageOutbox, conversationKey, requestWithDeadline } from './chat-state.js?v=fluency-20261020-2';
 import { reconcileNodes, reserveImage, focusElement } from './dom-utils.js?v=fluency-20261020-2';
 import { choosePrivateCall } from './private-call-menu.js?v=videochamada-20261020-1';
-let enhancements, feed;
+let enhancements, feed, callLayout;
 const drafts = new DraftStore(), pendingSends = new Set();
 const draftKey = target => session && target ? session.user.id + ':' + (target.private ? 'dm:' : 'channel:') + target.id : '';
 function saveComposerDraft() { if (!home && selected?.kind === 'text') drafts.set(draftKey(selected), $('message-input').value); }
@@ -460,7 +461,7 @@ function syncLocalCameraPreview(){
 }
 function volumeControl(participant,source,label){
   const field=el('label','participant-volume'),caption=el('span','',label),slider=el('input'),value=el('output');
-  field.dataset.audioSource=source;slider.type='range';slider.min='0';slider.max='1';slider.step='0.01';slider.dataset.audioSource=source;slider.id='volume-'+source+'-'+participant.identity;value.htmlFor=slider.id;
+  field.dataset.audioSource=source;slider.type='range';slider.min='0';slider.max='1';slider.step='0.01';slider.dataset.audioSource=source;slider.id='volume-'+source+'-'+participant.identity+'-'+crypto.randomUUID();value.htmlFor=slider.id;
   slider.oninput=()=>{localStorage.setItem('orbita-volume-'+participant.identity+(source==='screen_share_audio'?'-screen':''),slider.value);value.value=Math.round(Number(slider.value)*100)+'%';for(const entry of callMedia.values())if(entry.participantId===participant.identity&&entry.source===source&&entry.track.kind==='audio')applyRemoteVolume(entry);};
   field.append(caption,slider,value);return field;
 }
@@ -491,7 +492,7 @@ function onTrack(track, participant, publication) {
   if (sid) media.dataset.track = sid;
   const entry = {key, track, media, publication, participantId:participant.identity,source:track.kind==='audio'?audioSource(source):source, cleanups:[]};
   callMedia.set(key, entry);
-  const ended = () => disposeMedia(entry);
+  const ended = () => {disposeMedia(entry);updateCallUI();};
   if (track.on) { track.on('ended', ended); entry.cleanups.push(() => track.off?.('ended', ended)); }
 
   if (track.kind === 'video') {
@@ -520,7 +521,7 @@ function onTrack(track, participant, publication) {
     figure.classList.add('media-loading');frame.append(media,status);figure.append(frame,caption);
     $('media-grid').append(figure);if(media.readyState>=2)ready();
   } else { media.dataset.remoteAudio = 'true';media.dataset.participantId=participant.identity;media.dataset.audioSource=entry.source;document.body.append(media);applyRemoteVolume(entry); }
-  syncCallMedia();syncLocalCameraPreview();
+  syncCallMedia();syncLocalCameraPreview();callLayout?.update();
 }
 function removeTrack(track, publication, participant) {
   const sid=publication?.trackSid || track?.sid;
@@ -541,7 +542,7 @@ function updateCallUI() {
   $('join-call').textContent = joining ? 'Conectando…' : (room ? 'Trocar para esta sala ↗' : 'Entrar na sala ↗');
   $('active-controls').hidden = !here; $('empty-call').hidden = here;
   $('call-status').textContent = !config?.callsConfigured ? 'As chamadas não estão configuradas neste momento.'
-    : here ? `${room.remoteParticipants.size+1} participante${room.remoteParticipants.size===0?'':'s'} · ${qualityText(room.localParticipant.connectionQuality)} · câmera desligada por padrão.`
+    : here ? `${room.remoteParticipants.size+1} participante${room.remoteParticipants.size===0?'':'s'} · ${qualityText(room.localParticipant.connectionQuality)}`
     : room ? `Conectado a ${callChannel.name}. Você pode continuar ouvindo enquanto navega.` : 'Entre na sala para conversar por voz, vídeo ou tela.';
   $('participants').hidden = !here; $('media-grid').hidden = !here;
   if(participantRoom!==room){participantCards.clear();participantRoom=room;}const participantNodes=[];
@@ -552,7 +553,7 @@ function updateCallUI() {
     for (const participant of participants) {
       let card=participantCards.get(participant.identity);
       if(!card){card=el('div','participant');card.dataset.participantId=participant.identity;card.append(el('span','avatar'),el('strong','participant-name'),el('small','participant-status'));
-        if(!participant.isLocal)card.append(volumeControl(participant,'microphone','Microfone'),volumeControl(participant,'screen_share_audio','Transmissão'));participantCards.set(participant.identity,card);}
+        participantCards.set(participant.identity,card);}
       card.classList.toggle('speaking',!!participant.isSpeaking);const name=participant.name||'Participante';card.querySelector('.avatar').textContent=initials(name);card.querySelector('.participant-name').textContent=name;
       card.querySelector('.participant-status').textContent=`${participant.isMicrophoneEnabled?'Microfone ligado':'Microfone desligado'} · ${qualityText(participant.connectionQuality)}`;
       for(const slider of card.querySelectorAll('input[data-audio-source]')){
@@ -1343,6 +1344,19 @@ $('file-input').multiple=true;
 $('file-input').onchange=async()=>{const files=[...$('file-input').files];await enhancements.sendFiles(files);$('file-input').value='';$('file-input').accept='';};
 const updateBeforeDeviceControls=updateCallUI;
 updateCallUI=()=>{updateBeforeDeviceControls();updateCameraControl();};
+callLayout=initCallLayout({
+  state:()=>({room,selected,callChannel,deafened}),report:error=>toast(errorText(error)),toast,button,dialog:showDialog,
+  paragraph:text=>el('p','muted',text),invite:()=>{if(selected?.private)showDialog('Chamada privada',box=>box.append(el('p','','Esta conversa é privada. Abra Amigos para iniciar uma chamada com outra pessoa.'),button('Abrir Amigos',()=>{$('app-dialog').close();showFriends();})));else showCommunityInvite();},
+  avatar:(node,id)=>{const p=person(id);if(p.display_name==='Participante'){p.display_name=node.parentElement.querySelector('.participant-name')?.textContent||p.display_name;}setAvatar(node,p);},
+  participant:participant=>showDialog(participant.name||'Participante',box=>{
+    box.append(el('p','muted',qualityText(participant.connectionQuality)));
+    if(participant.isLocal){box.append(button('Meu perfil e áudio',()=>{$('app-dialog').close();$('settings').click();}));return;}
+    for(const [source,label] of [['microphone','Microfone'],['screen_share_audio','Transmissão de tela']]){const field=volumeControl(participant,source,label),slider=field.querySelector('input');slider.setAttribute('aria-label',(source==='microphone'?'Volume do microfone de ':'Volume da transmissão de ')+(participant.name||'Participante'));slider.value=sourceVolume(participant.identity,source);field.querySelector('output').value=Math.round(Number(slider.value)*100)+'%';box.append(field);}
+    box.append(el('p','muted','Estes volumes alteram apenas o que você ouve.'));
+  })
+});
+const updateBeforeCallLayout=updateCallUI;
+updateCallUI=()=>{updateBeforeCallLayout();callLayout.update();};
 feed=initSocialFeed({
   state:()=>({db,session,profile,moderator:siteRoles.some(role=>role.user_id===session?.user.id&&['creator','admin'].includes(role.role))}),
   el,toast,checked,showDialog,
