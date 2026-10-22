@@ -34,4 +34,3 @@ def install_luladroid(app,current_user,settings):
         user,headers=identity
         try:return {'room_sid':await room_identity(body.room_name,user,headers),'assistant':False}
         except httpx.HTTPError:raise HTTPException(503,'Não foi possível verificar a sala.')from None
-
