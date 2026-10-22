@@ -1,0 +1,10 @@
+export function showDiagnostics(ctx){
+ const uid=ctx.state().session?.user.id,current=()=>ctx.state().session?.user.id===uid;
+ ctx.showDialog('Qualidade do aplicativo',box=>{
+  box.classList.add('diagnostics-panel');
+  const intro=ctx.el('p','muted','Erros e lentidão por tela, em contagens agregadas. Sem mensagens, áudio, imagens, nomes, URLs ou dados de login.'),status=ctx.el('p','diagnostics-status','Carregando diagnóstico…');status.setAttribute('role','status');
+  const download=ctx.button('Baixar relatório CSV',async()=>{const response=await ctx.apiFetch('/api/admin/diagnostics.csv');const blob=await response.blob();if(!current()||!box.isConnected)return;const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='orbita-diagnostico.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),30000);},'primary');download.disabled=true;
+  box.append(intro,status,download,ctx.el('p','muted','As sugestões são hipóteses para revisão humana. O Gemini recebe somente resumos técnicos; no plano gratuito, o Google pode usá-los para melhorar seus produtos. Até 4 análises por dia, no máximo 1 por hora, somente com novos sinais. Nenhuma alteração é aplicada automaticamente.'),ctx.el('p','muted','Contagens ficam por 30 dias. Sugestões pendentes são consolidadas no banco ao abrir este painel; uma reinicialização anterior pode descartá-las. O CSV continua disponível com regras técnicas quando a IA não estiver configurada ou a cota acabar.'));
+  ctx.apiFetch('/api/admin/diagnostics').then(r=>r.json()).then(data=>{if(!current()||!box.isConnected)return;status.textContent=(data.geminiConfigured?'Gemini habilitado com proteção de plano gratuito. ':'Gemini aguardando configuração e verificação do plano gratuito. ')+`${data.rows} registros técnicos · ${data.suggestions} sugestões consolidadas.`;download.disabled=false;}).catch(()=>{if(current()&&box.isConnected)status.textContent='Não foi possível carregar. Feche e abra este painel para tentar novamente.';});
+ });
+}

@@ -30,7 +30,7 @@ function updateComposer() { $('send').disabled=!navigator.onLine||pendingSends.h
 const $ = id => document.getElementById(id);
 let db, config, session, channels = [], selected, signup = false;
 let subscription, generation = 0, messages = new Map(), oldest, hasMore = false, loading = false;
-let lulaController,lulaTask,voiceChat,voiceChatTask;
+let voiceChat,voiceChatTask,diagnostics;
 let room, callChannel, joining = false, shuttingDown = false, callJoin;
 function cancelCallJoin() { callJoin?.abort(); callJoin=null; joining=false; }
 let cameraFacing=localStorage.getItem('orbita-camera-facing')==='environment'?'environment':'user',cameraTask;
@@ -114,6 +114,7 @@ $('auth-form').onsubmit = async event => {
 
 let sessionTransition=0,sessionReady=false,sessionInitializing=false;
 async function showSession(next) {
+  diagnostics?.sync();
   if(!next){
     $('auth-view').hidden=false;$('app-view').hidden=true;$('app-dialog').close();closeMobileMenu();
     document.body.classList.remove('big-picture','call-focus','call-navigation-open');document.querySelector('.bp-bar')?.remove();
@@ -616,7 +617,6 @@ function updateSpeakingUI() {
 async function leaveCall({preserveJoin=false}={}) {
   if(!preserveJoin)cancelCallJoin();
   cameraTask=null;const previous = room;if(previous)microphoneSwitch.set(previous.localParticipant,false);room = null;callChannel = null;talkHeld=false;
-  lulaController?.stop();lulaController=null;
   enhancements?.callEnded(previous);callReactions?.clear();
   if (previous) previous.removeAllListeners();
   for(const entry of [...callMedia.values()])disposeMedia(entry);
@@ -679,7 +679,7 @@ $('join-call').onclick = async () => {
     try { await connected.startAudio(); } catch { toast('A chamada entrou. Toque na tela para liberar o áudio neste navegador.'); }
     if(!current()||room!==connected){await connected.disconnect();return;}
     enhancements.connected(connected,RoomEvent,result);
-    loadLuladroid(connected,target).catch(()=>{});
+    syncVoiceChat(true).catch(()=>{});
     try { if(result.canPublish!==false)await connected.localParticipant.setMicrophoneEnabled(!pushToTalk&&!deafened, audioCapture()); }
     catch (error) { toast('Você entrou sem microfone. ' + errorText(error)); }
     if(current()&&room===connected)await audioTools?.connected(connected);
@@ -761,6 +761,7 @@ async function boot() {
   if(booting)return;booting=true;setEntryBusy(true);startupRetry.hidden=true;$('auth-status').textContent='';
   try {
     config=await requestWithDeadline(async signal=>{const response=await fetch('/api/config',{signal});if(!response.ok)throw Error('O servidor está indisponível. Aguarde e tente novamente.');return response.json();},{timeout:30000});
+    if(config.diagnosticsEnabled)import('./app-diagnostics.js').then(module=>{diagnostics=module.initAppDiagnostics({account:()=>session?.user.id,send:async(events,user)=>{if(session?.user.id!==user)return;await apiFetch('/api/diagnostics/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({events})});}});}).catch(()=>{});
     if(config.sentryDsn||config.umamiScript)import('./telemetry.js').then(module=>module.configureTelemetry(config)).catch(()=>{});
     if (!config.configured) { $('setup').hidden = false; $('auth-submit').disabled = true; return; }
     const {createClient} = await requestWithDeadline(()=>import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/+esm'),{timeout:30000});
@@ -802,7 +803,7 @@ async function apiFetch(path, options={}) {
   const send=()=>requestWithDeadline(signal=>fetch(path,{...options,signal,headers:{...options.headers,Authorization:`Bearer ${fresh.access_token}`}}),{signal:options.signal,timeout:30000});
   let response=await send();
   if(response.status===401){fresh=await authRecovery.refresh(account);if(session?.user.id!==account)throw new DOMException('A conta mudou.','AbortError');response=await send();if(response.status===401)await authRecovery.expire(account);}
-  if(!response.ok) {const error=await response.json().catch(()=>({}));throw Error(error.detail||'Não foi possível concluir.');}
+  if(!response.ok) {if(!path.startsWith('/api/diagnostics')&&!path.startsWith('/api/admin/diagnostics'))window.dispatchEvent(new CustomEvent('orbita:technical-signal',{detail:'api_error'}));const error=await response.json().catch(()=>({}));throw Error(error.detail||'Não foi possível concluir.');}
   return response;
 }
 async function insertChannel(values){
@@ -1398,7 +1399,7 @@ $('dd-boost-btn').onclick=openCloud;$('banner-action-btn').onclick=openCloud;$('
 $('up-mic-btn').onclick=()=>$('mic').click();$('up-deafen-btn').onclick=()=>$('deafen').click();$('vb-mic').onclick=()=>$('mic').click();$('vb-video').onclick=()=>$('camera').click();$('dock-name').onclick=()=>{if(callChannel)selectChannel(callChannel);};
 $('back-to-call').onclick=()=>{if(selected?.private){const c=conversations.find(c=>c.id===selected.id);if(c)openConversation(c);}else{const c=channels.find(c=>c.community_id===activeCommunity&&c.kind==='text');if(c)selectChannel(c);}};
 $('connection-info').onclick=()=>showDialog('Conexão da chamada',container=>{container.append(el('p','',room?'Estado: '+room.state:'Você ainda não está em uma chamada.'));if(room){container.append(el('p','','Qualidade local: '+room.localParticipant.connectionQuality));for(const p of room.remoteParticipants.values())container.append(el('p','',(p.name||'Participante')+' · '+p.connectionQuality));}container.append(el('p','muted',`Vídeo adaptativo: perfil ${mediaSettings().mode}. O navegador ajusta a recepção à rede; áudio da tela só é liberado em abas e navegadores compatíveis.`));});
-function receiveCallData(...args){callReactions?.receive(...args);lulaController?.receive(...args);}
+function receiveCallData(...args){callReactions?.receive(...args);}
 const screenLabel=el('label','screen-option'),screenCheck=el('input');screenCheck.type='checkbox';screenCheck.id='share-screen-audio';screenCheck.checked=localStorage.getItem('orbita-screen-audio')!=='false';screenLabel.append(screenCheck,document.createTextNode('Incluir áudio da tela (autorize também na janela do navegador)'));$('active-controls').before(screenLabel);
 function updateScreenAudio(){localStorage.setItem('orbita-screen-audio',String(screenCheck.checked));}
 screenCheck.onchange=updateScreenAudio;updateScreenAudio();
@@ -1737,7 +1738,7 @@ $('settings').onclick=()=>{settingsBeforeAudioDevices();audioTools.fields($('dia
 const adminContext={el,button,toast,checked,showDialog,inputField,errorText,apiFetch,
  state:()=>({db,session,people,siteRoles,activeCommunity,selected}),hasPermission:permission=>hasCommunityPermission(permission),
  refreshRoles:async()=>{siteRoles=await checked(db.from('site_roles').select('*'));renderMembers();},
- transcripts:async()=>{const module=await(lulaTask||=import('./luladroid.js'));if(session)module.transcriptHistory(lulaContext);},
+ diagnostics:async()=>{const module=await import('./admin-diagnostics.js');if(session)module.showDiagnostics(adminContext);},
  reports:async()=>{const tools=await loadSocialTools();if(session)tools.moderation();},moderation:()=>enhancements.showModeration(),audit:()=>enhancements.showAudit(),clearDraft:()=>{drafts.set(draftKey(selected),'');resizeComposer();}
 };
 
@@ -1803,9 +1804,6 @@ async function jumpToReply(id){
  const root=messages.get(id)||await checked(db.from(target.private?'direct_messages':'messages').select(messageFields).eq(target.private?'conversation_id':'channel_id',target.id).eq('id',id).maybeSingle());
  if(session?.user.id!==user||selected?.id!==target.id||generation!==version)return;if(!root)throw Error('A mensagem não está mais disponível.');messages.set(root.id,root);renderMessages();requestAnimationFrame(()=>{if(generation!==version)return;const node=document.querySelector('[data-message-id="'+CSS.escape(root.id)+'"]');node?.scrollIntoView({block:'center'});node?.classList.add('message-target');});
 }
-
-const lulaContext={el,button,toast,checked,showDialog,apiFetch,person,state:()=>({db,session,room}),mount:()=>voiceChat.mount,openChat:()=>voiceChat.open(),refreshChat:()=>voiceChat.refresh()};
-async function loadLuladroid(target,channel){const user=session?.user.id;await syncVoiceChat(true);const module=await(lulaTask||=import('./luladroid.js'));if(room!==target||session?.user.id!==user)return;lulaController?.stop();lulaController=module.initLuladroid(lulaContext,target,(channel.private?'direct-':'channel-')+channel.id);}
 
 async function syncVoiceChat(force=false){
  if(!voiceChatTask&&(force||selected?.kind==='voice'))voiceChatTask=import('./voice-chat.js').then(module=>voiceChat=module.initVoiceChat({el,button,checked,toast,person,state:()=>({db,session,selected,home,room,callChannel})})).catch(error=>{voiceChatTask=null;throw error;});

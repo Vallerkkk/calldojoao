@@ -5,9 +5,8 @@ export function initVoiceChat(ctx){
  const toggle=button('Chat da sala',()=>setOpen(panel.hidden),'soft-button');toggle.id='voice-chat-toggle';toggle.setAttribute('aria-expanded','false');toggle.setAttribute('aria-controls','voice-room-chat');view.querySelector('.chat-actions').append(toggle);
  const panel=el('aside','voice-room-chat');panel.id='voice-room-chat';panel.hidden=true;panel.setAttribute('aria-label','Chat de texto da sala de voz');
  const header=el('header','voice-chat-header'),title=el('h3','','Chat da sala'),dismiss=button('Fechar',()=>setOpen(false),'text-button');header.append(title,dismiss);
- const transcript=el('section','voice-chat-transcription');transcript.id='voice-room-transcription';
- const earlier=button('Carregar anteriores',()=>load(true),'text-button'),list=el('div','voice-chat-messages'),status=el('p','muted');list.setAttribute('role','log');list.setAttribute('aria-label','Mensagens e transcrições da sala');list.setAttribute('aria-live','polite');status.setAttribute('role','status');
- const form=el('form','voice-chat-form'),input=el('textarea'),send=el('button','primary','Enviar');input.rows=2;input.maxLength=4000;input.setAttribute('aria-label','Mensagem no chat da sala de voz');send.type='submit';form.append(input,send);panel.append(header,transcript,earlier,list,status,form);view.append(panel);
+ const earlier=button('Carregar anteriores',()=>load(true),'text-button'),list=el('div','voice-chat-messages'),status=el('p','muted');list.setAttribute('role','log');list.setAttribute('aria-label','Mensagens da sala');list.setAttribute('aria-live','polite');status.setAttribute('role','status');
+ const form=el('form','voice-chat-form'),input=el('textarea'),send=el('button','primary','Enviar');input.rows=2;input.maxLength=4000;input.setAttribute('aria-label','Mensagem no chat da sala de voz');send.type='submit';form.append(input,send);panel.append(header,earlier,list,status,form);view.append(panel);
  const drafts=new DraftStore();let scope,user,key,version=0,subscription,rows=new Map(),loading=false,refreshAgain=false,pending=null,retry=null,poll;
  const current=(ticket,account)=>ticket===version&&ctx.state().session?.user.id===account;
  function save(){if(key)drafts.set(key,input.value);}
@@ -18,7 +17,7 @@ export function initVoiceChat(ctx){
  async function load(older=false){if(!scope)return;if(loading){refreshAgain=true;return;}loading=true;refreshAgain=false;const ticket=version,account=user,target={...scope};status.textContent='Carregando…';
   try{let query=ctx.state().db.from('voice_chat_messages').select('*').eq(target.field,target.id).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(older?50:Math.max(50,Math.min(300,rows.size)));
    if(older&&rows.size){const first=[...rows.values()].sort((a,b)=>a.created_at.localeCompare(b.created_at)||a.id.localeCompare(b.id))[0];query=query.or(`created_at.lt.${first.created_at},and(created_at.eq.${first.created_at},id.lt.${first.id})`);}
-   const result=await checked(query);if(!current(ticket,account))return;if(!older)rows.clear();for(const row of result)rows.set(row.id,row);while(rows.size>500)rows.delete(rows.keys().next().value);earlier.hidden=result.length<50;render();status.textContent=rows.size?'':'Este chat pertence somente a esta sala. As falas autorizadas aparecem aqui.';
+   const result=await checked(query);if(!current(ticket,account))return;if(!older)rows.clear();for(const row of result)rows.set(row.id,row);while(rows.size>500)rows.delete(rows.keys().next().value);earlier.hidden=result.length<50;render();status.textContent=rows.size?'':'Este chat pertence somente a esta sala. Envie a primeira mensagem.';
   }catch{if(current(ticket,account))status.textContent='Não foi possível carregar. Feche e abra o chat para tentar novamente.';}finally{if(current(ticket,account)){loading=false;if(refreshAgain){refreshAgain=false;queueMicrotask(()=>load());}}}
  }
  form.onsubmit=async event=>{event.preventDefault();if(!scope||pending||!input.value.trim())return;const ticket=version,account=user,text=input.value.trim(),id=retry?.key===key&&retry?.text===text?retry.id:crypto.randomUUID(),target={...scope};retry={id,text,key};pending=id;input.disabled=send.disabled=true;
@@ -27,12 +26,11 @@ export function initVoiceChat(ctx){
   finally{if(current(ticket,account)){pending=null;input.disabled=send.disabled=false;}}
  };
  async function update(){const state=ctx.state(),target=state.home?null:voiceChatScope(state.selected),account=state.session?.user.id,next=target&&account?account+':voice:'+target.field+':'+target.id:null;
-  transcript.hidden=!target||state.callChannel?.id!==target.id;
   if(next===key)return;save();version++;const ticket=version;loading=false;pending=null;retry=null;input.disabled=send.disabled=false;clearInterval(poll);const old=subscription;subscription=null;if(old)state.db.removeChannel(old).catch(()=>{});rows.clear();list.replaceChildren();scope=target;key=next;
   if(account!==user){drafts.useAccount(account,localStorage);user=account;}input.value=key?drafts.get(key):'';status.textContent='';earlier.hidden=true;if(!key){setOpen(false);return;}title.textContent='Chat · '+state.selected.name;input.placeholder='Conversar nesta sala';
   subscription=state.db.channel('voice-chat:'+account+':'+target.id).on('postgres_changes',{event:'*',schema:'public',table:'voice_chat_messages',filter:target.field+'=eq.'+target.id},()=>{if(current(ticket,account))load();}).subscribe();
   poll=setInterval(()=>{if(!document.hidden&&!panel.hidden&&current(ticket,account))load();},8000);if(!panel.hidden)load();
  }
  window.addEventListener('pagehide',()=>{save();drafts.flush();});window.addEventListener('focus',()=>{if(!panel.hidden)load();});
- return {update,refresh:()=>load(),open(){update();setOpen(true);},mount:transcript};
+ return {update,refresh:()=>load(),open(){update();setOpen(true);}};
 }

@@ -18,6 +18,7 @@ from livekit import api
 from integrations import install
 from public_pages import install_public_pages
 from luladroid import install_luladroid
+from diagnostics import install_diagnostics
 from community_features import install_features
 from upstream import client_for, new_client, read_json
 from videochamada import configured as videochamada_configured
@@ -31,6 +32,13 @@ async def lifespan(application):
         try:
             yield
         finally:
+            task = getattr(application.state, 'diagnostic_task', None)
+            if task is not None and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except __import__('asyncio').CancelledError:
+                    pass
             application.state.upstream = None
 
 
@@ -72,6 +80,7 @@ def config():
     return {'supabaseUrl': s['SUPABASE_URL'],
             'supabaseKey': s['SUPABASE_PUBLISHABLE_KEY'],
             'configured': ready,
+            'diagnosticsEnabled': True,
             'dailyDigestConfigured': os.getenv('DAILY_DIGEST_ENABLED','').lower()=='true',
             'sentryDsn': os.getenv('SENTRY_PUBLIC_DSN', '').strip(),
             'umamiScript': os.getenv('UMAMI_SCRIPT_URL', '').strip(),
@@ -205,5 +214,6 @@ install(app, current_user, settings, make_token)
 install_features(app, current_user, settings)
 install_public_pages(app, settings)
 install_luladroid(app, current_user, settings)
+install_diagnostics(app, current_user, settings)
 
 app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')
