@@ -17,6 +17,26 @@ let browser;
   await page.getByRole('button',{name:'Efeitos de perfil',exact:true}).click();await page.getByRole('button',{name:'Bolhas',exact:true}).click();assert.equal(await page.getByRole('button',{name:'Bolhas',exact:true}).getAttribute('aria-pressed'),'true');
   await page.getByRole('button',{name:'Capas',exact:true}).click();await page.getByRole('button',{name:'Gradiente',exact:true}).click();assert.equal(await page.getByRole('button',{name:'Gradiente',exact:true}).getAttribute('aria-pressed'),'true');await page.locator('#dialog-close').click();
   await profile();assert.equal(await page.locator('.rp-banner').evaluate(n=>n.classList.contains('banner-gradient')),true);assert.equal(await page.locator('.rp-avatar').evaluate(n=>n.classList.contains('avatar-frame-gold')),true);assert.equal(await page.locator('.rich-profile').evaluate(n=>n.classList.contains('profile-effect-bubbles')),true);
+  // New ZIP decorations coexist with saved choices from previous releases.
+  await page.getByRole('button',{name:'Decorações e efeitos',exact:true}).click();
+  await page.getByRole('heading',{name:'Profile Decoration',exact:true}).waitFor();
+  for(const [name,css] of [['Neon Dreams','avatar-frame-neon-dreams'],['Cosmic Drift','avatar-frame-cosmic'],['Obsidian Vein','avatar-frame-obsidian'],['Sakura Bloom','avatar-frame-sakura-bloom'],['Eclipse Minimal','avatar-frame-eclipse'],['Cyber Pulse','avatar-frame-cyber-pulse']]){
+    await page.getByRole('button',{name,exact:true}).click();
+    await page.waitForFunction(css=>document.querySelector('#user-avatar').parentElement.classList.contains(css),css);
+  }
+  await page.getByRole('button',{name:'Efeitos de perfil',exact:true}).click();
+  for(const name of ['Neon Glow','Pétalas de Sakura','Poeira Cósmica']){await page.getByRole('button',{name,exact:true}).click();assert.equal(await page.getByRole('button',{name,exact:true}).getAttribute('aria-pressed'),'true');}
+  await page.getByRole('button',{name:'Capas',exact:true}).click();
+  for(const name of ['Neon Dreams','Cosmic Drift','Sakura Bloom','Obsidian']){await page.getByRole('button',{name,exact:true}).click();assert.equal(await page.getByRole('button',{name,exact:true}).getAttribute('aria-pressed'),'true');}
+  await page.locator('#dialog-close').click();await page.reload({waitUntil:'networkidle'});await page.locator('#message-list .message').first().waitFor();await profile();
+  assert.equal(await page.locator('.rp-avatar').evaluate(n=>n.classList.contains('avatar-frame-cyber-pulse')),true);
+  assert.equal(await page.locator('.rich-profile').evaluate(n=>n.classList.contains('profile-effect-cosmic')),true);
+  assert.equal(await page.locator('.rp-banner').evaluate(n=>n.classList.contains('banner-obsidian')),true);
+  await page.emulateMedia({reducedMotion:'reduce'});
+  assert.equal(await page.locator('.rp-avatar').evaluate(n=>getComputedStyle(n,'::after').animationName),'none');
+  assert.match(await page.locator('.rp-avatar').evaluate(n=>getComputedStyle(n,'::after').boxShadow),/rgb\(0, 240, 255\)/);
+  assert.equal(await page.locator('#app-dialog').evaluate(n=>n.scrollWidth<=n.clientWidth+1),true);
+  await page.screenshot({path:path.join(tmp,`jesus17-profile-${mobile?'mobile':'desktop'}.png`)});
   await page.getByRole('button',{name:'Ver publicações no Feed',exact:true}).click();await page.locator('.sf-profile-bio h2').waitFor();assert.equal(await page.locator('.sf-profile-bio h2').innerText(),'Pessoa de teste');
   await page.keyboard.press('Alt+Enter');await page.locator('.bp-bar').waitFor();assert.equal(await page.locator('body').evaluate(n=>n.classList.contains('big-picture')),true);assert.equal(await page.evaluate(()=>document.body.scrollWidth>innerWidth+1),false);
   await page.locator('.bp-bar').getByRole('button',{name:'Configurações',exact:true}).click();await page.getByRole('heading',{name:/Seu perfil/}).waitFor();assert.equal(await page.locator('#noise-level,#agc-level').count(),0);await page.locator('#dialog-close').click();await page.locator('.bp-bar').getByRole('button',{name:'Sair do Big Picture',exact:true}).click();assert.equal(await page.locator('body').evaluate(n=>n.classList.contains('big-picture')),false);
@@ -26,7 +46,7 @@ let browser;
   await page.evaluate(()=>{const r=window.__qaRoom,p=[...r.remoteParticipants.values()][0],canvas=document.createElement('canvas');canvas.width=320;canvas.height=180;const c=canvas.getContext('2d'),paint=()=>{c.fillStyle='#285164';c.fillRect(0,0,320,180);};paint();const stream=canvas.captureStream(5),timer=setInterval(paint,150),track={kind:'video',source:'camera',sid:'qa-video',attach(){const v=document.createElement('video');v.autoplay=true;v.muted=true;v.srcObject=stream;return v;},detach(v){clearInterval(timer);stream.getTracks().forEach(t=>t.stop());v.srcObject=null;return [];}};r.emit('TrackSubscribed',track,{track,source:'camera',trackSid:'qa-video'},p);});
   await page.waitForFunction(()=>document.querySelector('.media-tile video')?.readyState>=2);if(!mobile){await page.locator('.media-tile video').dblclick();await page.waitForFunction(()=>!!document.fullscreenElement);assert.equal(await page.locator('#app-dialog').evaluate(n=>n.open),false);await page.evaluate(()=>document.exitFullscreen());}
   await page.keyboard.press('Alt+Enter');await page.locator('.bp-bar').waitFor();assert.equal(await page.evaluate(()=>document.body.scrollWidth>innerWidth+1),false);await page.locator('.bp-bar').getByRole('button',{name:'Canais',exact:true}).click();assert.equal(await page.locator('.sidebar').isVisible(),true);await page.locator(`[data-channel-id="${VOICE}"]`).first().click();await page.locator('.bp-bar').getByRole('button',{name:'Sair do Big Picture',exact:true}).click();await page.locator('#leave-call').click();assert.deepEqual(errors,[]);
-  report.push({mobile,categories:true,banner:true,independentPreferences:true,feedProfile:true,bigPicture:true,bigPictureNavigation:true,callProfiles:true,doubleClickFullscreen:!mobile,errors:0});await context.close();
+  report.push({mobile,newDecorations:true,savedChoicesCompatible:true,reducedMotion:true,categories:true,banner:true,independentPreferences:true,feedProfile:true,bigPicture:true,bigPictureNavigation:true,callProfiles:true,doubleClickFullscreen:!mobile,errors:0});await context.close();
  }
  console.log(JSON.stringify(report));await browser.close();
 })().catch(async error=>{console.error(error);await browser?.close();process.exitCode=1;});

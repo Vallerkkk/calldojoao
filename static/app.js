@@ -1077,7 +1077,7 @@ $('settings').onclick=()=>showDialog('Seu perfil e áudio',container=>{
   form.append(el('h3','','Áudio'));
   form.append(el('p','muted','Ajustes aplicados ao microfone. O navegador e o dispositivo podem limitar o efeito real.'));
 
-  const noiseLabel=el('label','check-field');const noiseCheck=el('input');noiseCheck.type='checkbox';noiseCheck.checked=noise;noiseLabel.append(noiseCheck,document.createTextNode('Supressão de ruído'));form.append(noiseLabel,el('p','muted','Reduz ruídos de fundo (teclado, ventilador, ambiente).'));
+  const noiseLabel=el('label','check-field');const noiseCheck=el('input');noiseCheck.type='checkbox';noiseCheck.checked=noise;noiseLabel.append(noiseCheck,document.createTextNode('Supressão de ruído'));form.append(noiseLabel,el('p','muted','Reduz ruídos de fundo. Escolha o modo e ajuste o ganho em Entrada e saída de áudio.'));
   const echoLabel=el('label','check-field');const echoCheck=el('input');echoCheck.type='checkbox';echoCheck.checked=echoCancellation;echoLabel.append(echoCheck,document.createTextNode('Cancelamento de eco'));form.append(echoLabel,el('p','muted','Evita que o áudio dos alto-falantes volte pelo microfone.'));
   const agcLabel=el('label','check-field');const agcCheck=el('input');agcCheck.type='checkbox';agcCheck.checked=autoGainControl;agcLabel.append(agcCheck,document.createTextNode('Controle automático de ganho'));form.append(agcLabel,el('p','muted','Mantém o volume da sua voz mais estável.'));
 

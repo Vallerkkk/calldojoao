@@ -11,11 +11,14 @@ O worklet é um arquivo servido pela própria aplicação, sem Blob URL, eval ou
 A classe TypeScript é a fonte; npm run build gera sua versão JavaScript e os bundles. O build não verifica tipos TypeScript.
 
 Validação local (Chrome em Windows):
-- 52 testes unitários JavaScript e 70 testes Python passaram.
+- 58 testes unitários JavaScript e 70 testes Python passaram.
 - Build, integridade dos assets e equivalência das migrações/SQL passaram.
 - DSP real: os quatro presets produziram amostras finitas e áudio não silencioso com sinal sintético; restart, destroy idempotente, stream emprestado, preset inválido, saída estável, falha de módulo, erro de execução e cancelamento durante init passaram.
 - Suites audio_experience, call_session, call_controls e call_media passaram em desktop/mobile simulados, com LiveKit simulado. audio_experience cobre seleção dos quatro novos presets.
 
-Limitações: sem chamada ponta a ponta em servidor LiveKit real, sem microfones físicos, sem audição/calibração dos presets e sem Safari/Firefox/Electron. A suíte completa de navegação/acessibilidade e os testes SQL com banco real não foram executados. Os perfis podem cortar sílabas/fala baixa; RNNoise e somente navegador continuam disponíveis. Publicar como PR em rascunho até validar com dois participantes, mute/PTT, troca de dispositivo, reconexão e saída da chamada nos navegadores suportados.
+Limitações: sem chamada ponta a ponta em servidor LiveKit real, sem microfones físicos, sem audição/calibração dos presets e sem Safari/Firefox/Electron. Acessibilidade em 24 modos de tema passou em desktop/mobile simulados; a suíte completa de navegação e os testes SQL com banco real não foram executados. Os perfis podem cortar sílabas/fala baixa; RNNoise e somente navegador continuam disponíveis. Publicar como PR em rascunho até validar com dois participantes, mute/PTT, troca de dispositivo, reconexão e saída da chamada nos navegadores suportados.
 
 Higiene da base: dependências instaladas, arquivos .env, logs e builds antigos não referenciados do ZIP foram excluídos. As rotas de IA/transcrição adicionadas pelo ZIP foram removidas: não verificavam acesso à chamada e uma delas referenciava time sem import. Não são necessárias para DSP e não foram expostas. Arquivos legados já existentes no GitHub foram preservados.
+
+
+Atualização Jesus 19: os modos Aprimorada e Agressiva usam RNNoise; Agressiva aumenta o corte de graves de 80 para 120 Hz. O controle Ganho do microfone ajusta o volume enviado nesses dois modos (10–100%, com 50% como ganho unitário), sem substituir a faixa durante os ajustes. Não é uma integração com Krisp. Os quatro perfis de voz continuam disponíveis. Os ajustes são preservados ao trocar o microfone ou reiniciar o processador.
