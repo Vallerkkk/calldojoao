@@ -1,0 +1,76 @@
+{
+  "name": "orbita-desktop",
+  "version": "1.0.2",
+  "description": "Aplicativo desktop da comunidade Ã“rbita",
+  "author": "Ã“rbita",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.cjs",
+    "dist": "electron-builder --win nsis zip --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "44.9.2",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.orbita.desktop",
+    "productName": "Orbita",
+    "copyright": "Ã“rbita",
+    "asar": true,
+    "electronDist": "node_modules/electron/dist",
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    },
+    "directories": {
+      "output": "../work/desktop-dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.cjs",
+      "policy.cjs",
+      "picker-preload.cjs",
+      "ui/**/*",
+      "assets/icon.png",
+      "assets/icon.ico",
+      "package.json",
+      "updater.cjs"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "artifactName": "Orbita-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Ã“rbita",
+      "runAfterFinish": false,
+      "artifactName": "Orbita-Setup-${version}-${arch}.${ext}",
+      "deleteAppDataOnUninstall": false,
+      "differentialPackage": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Vallerkkk",
+      "repo": "calldojoao",
+      "releaseType": "release"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9"
+  }
+}
