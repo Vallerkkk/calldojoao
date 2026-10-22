@@ -1,0 +1,36 @@
+/* Restrained surfaces; no blur, animated gradients, layout transitions or theme overrides. */
+:root{--surface-radius:16px;--motion-fast:140ms;--motion-ease:cubic-bezier(.2,.7,.3,1)}
+.sidebar{border-right:1px solid var(--border);background:var(--bg-sidebar)}
+.server-header{padding-inline:18px;box-shadow:none}.server-header h1{letter-spacing:-.035em}
+.channel{position:relative;border-radius:10px;margin-block:3px;padding-inline:12px;transition:transform var(--motion-fast) var(--motion-ease),opacity var(--motion-fast)}
+.channel.active{background:var(--accent-soft);box-shadow:inset 3px 0 var(--accent)}
+.channel.active .channel-name{font-weight:650}.category-header{padding-top:18px;letter-spacing:.07em}
+.chat-header{border-bottom:1px solid var(--border);box-shadow:none;gap:12px}.chat-title h2{font-weight:650;letter-spacing:-.025em}
+.chat-header .chat-actions>button{border-radius:11px;min-width:44px;min-height:44px}.chat-header .chat-actions>button:focus-visible{outline-offset:2px}
+.messages{padding-block:20px}.message{border-radius:12px}.message p{line-height:1.6}.message-meta{gap:8px}.message-meta time{font-variant-numeric:tabular-nums}
+.message-form-wrap{padding:12px 20px 20px}.message-form{border-radius:var(--surface-radius);border:1px solid var(--border-strong);box-shadow:0 4px 14px #00000012;padding:8px 10px;gap:8px}
+.message-form .send-live{min-width:44px;min-height:44px;border-radius:12px;box-shadow:none}.message-form .add-btn,.message-form .icon-btn{min-width:44px;min-height:44px}
+.welcome{padding:28px;border:1px solid var(--border);border-radius:20px;background:var(--bg-elevated);box-shadow:none}.welcome h1{letter-spacing:-.04em;line-height:1.15}.welcome p{max-width:58ch}
+.user-panel{border-top:1px solid var(--border);gap:8px;padding-inline:12px}.user-panel .up-avatar{flex-shrink:0}.user-panel .up-name{letter-spacing:-.01em}
+.feature-panel,.app-dialog,dialog{border:1px solid var(--border-strong);border-radius:20px;box-shadow:0 20px 64px #00000038}dialog::backdrop{background:#0008;backdrop-filter:none}
+dialog input,dialog select,dialog textarea{border-radius:10px;min-height:44px}dialog button{min-height:44px}dialog h2{letter-spacing:-.03em}.diagnostics-panel{display:flex;flex-direction:column;gap:14px}.diagnostics-panel p{line-height:1.65;margin:0}.diagnostics-status{padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--bg-elevated)}
+.soft-button,.primary{border-radius:10px;transition:transform var(--motion-fast) var(--motion-ease),opacity var(--motion-fast)}
+.auth-card{border:1px solid var(--border-strong);border-radius:24px;box-shadow:0 20px 60px #00000025}.auth-card h2{letter-spacing:-.045em}.auth-card input{min-height:48px;border-radius:12px}.auth-card .primary{min-height:48px;border-radius:12px}
+.voice-room-chat{background:var(--bg-floating);box-shadow:-12px 0 32px #00000012}.voice-chat-header{min-height:64px;gap:10px}.voice-chat-header h3{font-weight:650;letter-spacing:-.02em}.voice-chat-message{border-bottom:0;border-radius:12px;padding:12px}.voice-chat-message:nth-child(even){background:var(--bg-elevated)}.voice-chat-form{gap:8px;padding:12px}.voice-chat-form textarea{border-radius:12px;line-height:1.5}.voice-chat-form button{min-height:44px}.voice-chat-messages{padding:10px;scrollbar-gutter:stable}
+button:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent-hover);outline-offset:3px}
+@media(hover:hover) and (pointer:fine){.channel:hover{transform:translateX(2px)}.soft-button:active,.primary:active{transform:scale(.98)}}
+@media(max-width:780px){.chat-header{gap:6px;padding-inline:10px}.chat-title h2{letter-spacing:0}.message-form-wrap{padding:8px 8px calc(10px + env(safe-area-inset-bottom))}.message-form{padding:6px;gap:3px;border-radius:16px}.welcome{padding:20px;border-radius:16px}.messages{padding-block:12px}.channel{min-height:44px}.auth-card{border-radius:20px}.voice-chat-header{min-height:60px}.voice-chat-form textarea{font-size:16px}.category-header{padding-top:14px}}
+@media(prefers-reduced-motion:reduce){.channel,.primary,.soft-button{transition:none!important;transform:none!important}}
+body[data-reduce-motion=true] .channel,body[data-reduce-motion=true] .primary,body[data-reduce-motion=true] .soft-button{transition:none!important;transform:none!important}
+
+/* Friends and DMs have independent, bounded action groups. */
+.friend-card{display:flex;flex-wrap:nowrap;align-items:center;gap:12px;min-width:0;min-height:76px}
+.friend-card>.avatar{flex:0 0 40px;width:40px;height:40px;overflow:hidden}.friend-card>.avatar img{width:100%;height:100%;object-fit:cover}
+.friend-info{flex:1 1 0;min-width:0;overflow:hidden}.friend-info strong,.friend-info small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.friend-actions{display:flex;flex:0 0 auto;align-items:center;gap:8px}.friend-actions button{min-height:44px;white-space:nowrap}
+#dm-channels .dm-pinned-row{display:flex;align-items:center;min-width:0;gap:2px}
+#dm-channels .dm-pinned-row>.channel{width:auto;flex:1 1 0;min-width:0;min-height:44px;overflow:hidden}
+#dm-channels .dm-pinned-row>.channel .channel-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500;line-height:1.4}
+#dm-channels .dm-pin{flex:0 0 44px;width:44px;min-width:44px;max-width:44px;min-height:44px;padding:0;display:grid;place-items:center;margin:0;gap:0}
+.add-friend-form input,.add-friend-form button{min-height:44px}.add-friend-form button{flex-shrink:0;white-space:nowrap}
+@media(max-width:780px){#friends-view .chat-header{height:auto;min-height:60px;padding-block:8px}#friends-view .chat-title{flex-wrap:wrap;overflow:visible}#friends-view .friends-tabs{flex-wrap:wrap;gap:4px}.friends-tab{min-height:44px}.friends-list-wrap{padding:16px 12px calc(24px + env(safe-area-inset-bottom))}.friend-card{display:grid;grid-template-columns:40px minmax(0,1fr);gap:10px 12px}.friend-actions{grid-column:1/-1;justify-content:flex-end;flex-wrap:wrap}.friend-actions button{min-height:44px}.add-friend-form{flex-direction:column}.add-friend-form input{width:100%;font-size:16px}.add-friend-form button{width:100%}}
