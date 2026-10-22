@@ -27,7 +27,7 @@ function openProfileCustomizer() {
 }
 
 function openDecorationGallery() {
-  showDialog('Profile Decoration', container => {
+  showDialog('Loja de Perfil', container => {
     const card = el('div', 'profile-edit-card'); container.append(card); const inner = el('div','profile-edit-content'); card.append(inner); container = inner;
     let prefs = loadProfilePrefs();
     const categories = [
