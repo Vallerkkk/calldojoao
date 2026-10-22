@@ -27,6 +27,8 @@ A interface utilizada pelo servidor fica em `static/index.html`. O servidor inic
 
 O arquivo `.env` e o ambiente `.venv/` são locais e não devem ser enviados ao GitHub ou Render.
 
+Pacotes ZIP antigos, protótipos HTML da raiz e a integração desativada com Google Drive foram removidos. O armazenamento atual usa Supabase Storage. O antigo `schema_supabase.sql` duplicava o baseline e foi removido: use as migrações ou o `supabase.sql` gerado, conforme as instruções acima. Arquivos de versões anteriores em `static/dist/` são mantidos para atender abas abertas; não são duplicatas descartáveis.
+
 
 ## Feed geral da Órbita
 
