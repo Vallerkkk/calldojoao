@@ -1,0 +1,80 @@
+name: Qualidade da Órbita
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  python:
+    if: ${{ github.event.repository.private == false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: python -m unittest discover -s tests -p 'test_*.py'
+      - run: python scripts/database.py
+      - run: python scripts/check_build.py
+  browser:
+    if: ${{ github.event.repository.private == false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [navigation, calls, media, quality]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npm run build
+      - run: git diff --exit-code -- static/dist
+      - run: npm run test:unit
+      - run: npx playwright install --with-deps chromium
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Iniciar servidor de teste
+        run: |
+          python -m uvicorn app:app --host 127.0.0.1 --port 8766 > /tmp/orbita-tests.log 2>&1 &
+          python - <<'PY'
+          import time,urllib.request
+          deadline=time.monotonic()+30
+          while True:
+              try:
+                  urllib.request.urlopen('http://127.0.0.1:8766/healthz',timeout=2)
+                  break
+              except OSError:
+                  if time.monotonic()>deadline:raise
+                  time.sleep(.25)
+          PY
+      - run: node scripts/browser-tests.cjs ${{ matrix.group }}
+        env:
+          ORBITA_TEST_URL: http://127.0.0.1:8766/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: failure()
+        with:
+          name: diagnostics-${{ matrix.group }}
+          path: work/browser-temp/
+          retention-days: 3
+  desktop:
+    if: ${{ github.event.repository.private == false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+        working-directory: desktop
+      - run: npm test
+        working-directory: desktop

@@ -4,13 +4,13 @@ const fs=require('fs'),path=require('path'),assert=require('node:assert/strict')
 const tmp=path.resolve(__dirname,'../work/browser-temp');fs.mkdirSync(tmp,{recursive:true});process.env.TEMP=tmp;process.env.TMP=tmp;
 let browser;
 (async()=>{
- browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});const report=[];
+ browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||undefined});const report=[];
  for(const mobile of [false,true]){
   const context=await browser.newContext({viewport:{width:mobile?390:1440,height:mobile?844:1000},isMobile:mobile,hasTouch:mobile});await context.addInitScript(OTHER=>localStorage.setItem('orbita-volume-'+OTHER,'0.65'),OTHER);
   const livekit=fs.readFileSync(path.join(__dirname,'fixtures/livekit_stub.mjs'),'utf8').replace('constructor() {','constructor(options) { window.__qaRoomOptions=options;');
   await context.route('**/*',route=>{const url=route.request().url();if(url.includes('supabase-js'))return route.fulfill({contentType:'application/javascript',body:stub});if(url.includes('livekit-client'))return route.fulfill({contentType:'application/javascript',body:livekit});if(url.endsWith('/api/config'))return route.fulfill({json:{configured:true,supabaseUrl:'https://qa.supabase.co',supabaseKey:'public-qa',callsConfigured:true,storageConfigured:true,pushConfigured:false}});if(url.endsWith('/join'))return route.fulfill({json:{url:'wss://fake.invalid',token:'fake',canPublish:true}});return route.continue();});
   const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));await page.goto(process.env.ORBITA_TEST_URL||'http://127.0.0.1:8766/',{waitUntil:'networkidle'});await page.locator('#message-list .message').first().waitFor();
-  if(mobile)await page.locator('#mobile-menu-btn').click();await page.locator(`[data-channel-id="${VOICE}"]`).first().click();await page.locator('#join-call').click();await page.waitForFunction(()=>window.__qaRoom?.state==='connected');await page.waitForTimeout(100);assert.equal(await page.evaluate(()=>window.__qaRoomOptions.webAudioMix),true);
+  if(mobile)await page.locator('#mobile-menu-btn').click();await page.locator(`[data-channel-id="${VOICE}"]`).first().click();await page.locator('#join-call').click();await page.waitForFunction(()=>window.__qaRoom?.state==='connected');await page.waitForTimeout(100);assert.equal(await page.evaluate(()=>window.__qaRoomOptions.webAudioMix.audioContext instanceof AudioContext),true);
   const openVolume=async()=>{await page.locator(`.participant[data-participant-id="${OTHER}"] .call-tile-menu`).click();};await openVolume();
   const peer=page.locator('#app-dialog'),mic=peer.getByRole('slider',{name:'Volume do microfone de Outra pessoa'}),screen=peer.getByRole('slider',{name:'Volume da transmissão de Outra pessoa'});
   assert.equal(await mic.inputValue(),'0.65');assert.equal(await screen.inputValue(),'1');

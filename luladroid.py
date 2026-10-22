@@ -1,202 +1,71 @@
-<<<<<<< HEAD
-"""LulaDroid: Transcrição e Assistente de Voz 100% via Google Gemini API.
-Realiza transcrição de áudio multimodal e análise de texto diretamente com Gemini.
-"""
-import os
-import json
-=======
-"""LulaDroid: Inteligência Artificial na chamada de voz do Órbita.
-Analisa a fala com Gemini API e responde em áudio na call via Puter TTS.
-"""
-import os
->>>>>>> b5a39d3b668be49dd09253e2141ca6f5c279f435
+"""Opt-in call assistant. No raw audio or transcript is sent to Gemini."""
+import os,re,unicodedata,json
+from uuid import UUID
+from fastapi import Depends,HTTPException
+from pydantic import BaseModel,Field
+from livekit import api
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict
-from upstream import client_for, read_json
+from upstream import client_for
 
-DEFAULT_GEMINI_KEY = "AQ.Ab8RN6LwIVMnELQD7LmloIbFn9gK3bu5MAgVV8Lmc1T6xOsRPA"
-DEFAULT_GEMINI_PROJECT = "735777445484"
+def question_from_speech(text):
+    normalized=''.join(c for c in unicodedata.normalize('NFD',text.lower())if unicodedata.category(c)!='Mn')
+    match=re.search(r'\b(?:e\s*ai)\s+lula\s*droid\b[\s,:!?;.-]*(.*)',normalized,re.S)
+    return match.group(1).strip() if match else ''
 
-class LulaDroidQuery(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-<<<<<<< HEAD
-    prompt: str | None = None
-    audio_base64: str | None = None
-    mime_type: str | None = "audio/webm"
-=======
-    prompt: str
->>>>>>> b5a39d3b668be49dd09253e2141ca6f5c279f435
-    speaker: str | None = None
-    channel_id: str | None = None
+def configured():return bool(os.getenv('GEMINI_API_KEY'))and os.getenv('GEMINI_FREE_TIER_CONFIRMED')=='true'
 
-def get_gemini_credentials():
-    key = os.getenv("GEMINI_API_KEY", DEFAULT_GEMINI_KEY).strip() or DEFAULT_GEMINI_KEY
-    project = os.getenv("GEMINI_PROJECT", DEFAULT_GEMINI_PROJECT).strip() or DEFAULT_GEMINI_PROJECT
-    return key, project
+class VoiceScope(BaseModel):
+    room_name:str=Field(min_length=8,max_length=80,pattern=r'^(channel|direct)-[0-9a-f-]{36}$')
+class VoiceAsk(VoiceScope):
+    speech:str=Field(min_length=1,max_length=1200)
 
-def install_luladroid(app, current_user):
-    @app.post("/api/ai/luladroid/analyze")
-    async def analyze_query(body: LulaDroidQuery, identity=Depends(current_user)):
-        user, _ = identity
-        prompt = (body.prompt or "").strip()
-<<<<<<< HEAD
-        audio_b64 = (body.audio_base64 or "").strip()
+def install_luladroid(app,current_user,settings):
+    async def room_identity(name,user,headers):
+        # Both RLS room access and actual LiveKit presence are required.
+        target=name.split('-',1)[1]
+        try:UUID(target)
+        except ValueError:raise HTTPException(400,'Sala inválida')from None
+        table='channels'if name.startswith('channel-')else'conversations'
+        async with client_for(app)as client:
+            result=await client.get(settings()['SUPABASE_URL']+'/rest/v1/'+table,headers=headers,params={'id':'eq.'+target,'select':'id'})
+        if result.status_code!=200 or not result.json():raise HTTPException(403,'Você não tem acesso à sala.')
+        s=settings()
+        if not all(s.get(k)for k in('LIVEKIT_URL','LIVEKIT_API_KEY','LIVEKIT_API_SECRET')):raise HTTPException(503,'Chamadas indisponíveis.')
+        try:
+            async with api.LiveKitAPI(s['LIVEKIT_URL'],s['LIVEKIT_API_KEY'],s['LIVEKIT_API_SECRET'])as lk:
+                await lk.room.get_participant(api.RoomParticipantIdentity(room=name,identity=user['id']))
+                rooms=await lk.room.list_rooms(api.ListRoomsRequest(names=[name]))
+                if not rooms.rooms:raise ValueError()
+                return rooms.rooms[0].sid
+        except Exception:raise HTTPException(403,'Entre na chamada antes de usar o assistente.')from None
 
-        if not prompt and not audio_b64:
-            raise HTTPException(400, "Forneça um texto ou áudio para o Gemini processar.")
-=======
-        if not prompt:
-            raise HTTPException(400, "Texto para análise não fornecido.")
->>>>>>> b5a39d3b668be49dd09253e2141ca6f5c279f435
+    @app.post('/api/luladroid/room')
+    async def room_info(body:VoiceScope,identity=Depends(current_user)):
+        user,headers=identity
+        try:return {'room_sid':await room_identity(body.room_name,user,headers),'assistant':configured()}
+        except httpx.HTTPError:raise HTTPException(503,'Não foi possível verificar a sala.')from None
 
-        key, project = get_gemini_credentials()
-
-        system_instruction = (
-            "Você é o LulaDroid, um assistente robô inteligente, carismático e prestativo "
-            "em português brasileiro para as chamadas de voz e vídeo do aplicativo Órbita. "
-<<<<<<< HEAD
-            "Você realiza a transcrição precisa da fala e responde às dúvidas de forma amigável, direta e concisa "
-            "(no máximo 2 ou 3 frases curtas), de modo que sua resposta soe excelente ao ser falada na chamada."
-=======
-            "Responda à pergunta feita pelo usuário de forma amigável, direta e concisa "
-            "(no máximo 2 ou 3 frases curtas), de modo que sua resposta soe excelente e natural "
-            "ao ser reproduzida por sintetizador de voz (TTS) na chamada."
->>>>>>> b5a39d3b668be49dd09253e2141ca6f5c279f435
-        )
-
-        headers = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": key,
-        }
-        if project:
-            headers["x-goog-user-project"] = project
-
-<<<<<<< HEAD
-        parts = []
-        if audio_b64:
-            clean_b64 = audio_b64.split(",")[-1]
-            parts.append({
-                "inlineData": {
-                    "mimeType": body.mime_type or "audio/webm",
-                    "data": clean_b64
-                }
-            })
-            inst = (
-                "Transcreva com precisão o que foi falado no áudio em português brasileiro. "
-                "Em seguida, verifique se a fala ativou o comando 'eai LulaDroid' (ou 'e aí LulaDroid'). "
-                "Se ativou, responda com gentileza à pergunta ou saudação (em 2 ou 3 frases curtas). "
-                "Retorne estritamente um JSON no seguinte formato: "
-                '{"transcricao": "texto transcrito aqui", "ativou": true ou false, "resposta": "sua resposta aqui ou vazio"}'
-            )
-            parts.append({"text": inst})
-        else:
-            parts.append({"text": prompt})
-
-        payload = {
-            "system_instruction": {"parts": [{"text": system_instruction}]},
-            "contents": [{"role": "user", "parts": parts}],
-            "generationConfig": {"temperature": 0.7, "maxOutputTokens": 400}
-        }
-
-        last_error = None
-        for model in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"):
-=======
-        payload = {
-            "system_instruction": {
-                "parts": [{"text": system_instruction}]
-            },
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [{"text": prompt}]
-                }
-            ],
-            "generationConfig": {
-                "temperature": 0.7,
-                "maxOutputTokens": 300
-            }
-        }
-
-        # Try gemini-2.5-flash then gemini-1.5-flash
-        models = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"]
-        last_error = None
-
-        for model in models:
->>>>>>> b5a39d3b668be49dd09253e2141ca6f5c279f435
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-            try:
-                async with client_for(app) as client:
-                    response = await client.post(url, headers=headers, json=payload, timeout=20.0)
-                    if response.status_code == 200:
-                        data = read_json(response, dict)
-                        candidates = data.get("candidates") or []
-                        if candidates:
-<<<<<<< HEAD
-                            c_parts = candidates[0].get("content", {}).get("parts", [])
-                            if c_parts and "text" in c_parts[0]:
-                                raw_out = c_parts[0]["text"].strip()
-                                if audio_b64:
-                                    try:
-                                        clean_json = raw_out.strip("`").replace("json\n", "", 1).strip()
-                                        parsed = json.loads(clean_json)
-                                        return {
-                                            "success": True,
-                                            "transcription": parsed.get("transcricao", ""),
-                                            "triggered": bool(parsed.get("ativou")),
-                                            "reply": parsed.get("resposta", ""),
-                                            "model": model,
-                                            "speaker": body.speaker or user.get("user_metadata", {}).get("display_name", "Participante")
-                                        }
-                                    except Exception:
-                                        return {
-                                            "success": True,
-                                            "transcription": raw_out,
-                                            "triggered": "eai luladroid" in raw_out.lower() or "e aí luladroid" in raw_out.lower(),
-                                            "reply": raw_out,
-                                            "model": model
-                                        }
-                                return {
-                                    "success": True,
-                                    "reply": raw_out,
-=======
-                            parts = candidates[0].get("content", {}).get("parts", [])
-                            if parts and "text" in parts[0]:
-                                text = parts[0]["text"].strip()
-                                return {
-                                    "success": True,
-                                    "reply": text,
->>>>>>> b5a39d3b668be49dd09253e2141ca6f5c279f435
-                                    "model": model,
-                                    "speaker": body.speaker or user.get("user_metadata", {}).get("display_name", "Participante")
-                                }
-                    else:
-                        last_error = f"HTTP {response.status_code}"
-            except Exception as e:
-                last_error = str(e)
-
-<<<<<<< HEAD
-        fallback_reply = (
-            f"Olá companheiro! LulaDroid na escuta com Gemini. "
-            f"Ouvi sua mensagem: '{prompt or 'áudio recebido'}' e estou ativo na chamada!"
-        )
-        return {
-            "success": True,
-            "transcription": prompt or "Áudio processado pelo Gemini",
-            "triggered": False,
-            "reply": fallback_reply,
-            "model": "fallback-gemini",
-=======
-        # Fallback intelligent response if cloud network is blocked or key restricted
-        fallback_reply = (
-            f"Olá companheiro! LulaDroid na escuta. Ouvi sua pergunta sobre '{prompt}'. "
-            "Estou conectado na chamada e pronto para ajudar!"
-        )
-        return {
-            "success": True,
-            "reply": fallback_reply,
-            "model": "fallback-agent",
->>>>>>> b5a39d3b668be49dd09253e2141ca6f5c279f435
-            "fallback": True,
-            "error_detail": last_error
-        }
+    @app.post('/api/luladroid/ask')
+    async def ask(body:VoiceAsk,identity=Depends(current_user)):
+        question=question_from_speech(body.speech)
+        if not question:raise HTTPException(400,'Diga eai LulaDroid e a pergunta.')
+        if not configured():raise HTTPException(503,'Gemini ainda não foi habilitado no plano gratuito.')
+        user,headers=identity
+        try:
+            sid=await room_identity(body.room_name,user,headers)
+            async with client_for(app)as client:
+                reserved=await client.post(settings()['SUPABASE_URL']+'/rest/v1/rpc/reserve_luladroid',headers=headers,json={'room_key':sid,'room_name':body.room_name})
+                if reserved.status_code!=200:raise HTTPException(429,'Consentimento ausente ou limite gratuito atingido. Aguarde para tentar novamente.')
+                result=await client.post('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',headers={'X-goog-api-key':os.environ['GEMINI_API_KEY']},json={'systemInstruction':{'parts':[{'text':'Você é LulaDroid, assistente da chamada Órbita. Responda em português brasileiro, em até 60 palavras. Você não tem acesso ao histórico, dados privados, ferramentas nem administração do site. Não afirme executar ações.'}]},'contents':[{'parts':[{'text':question[:1000]}]}],'generationConfig':{'maxOutputTokens':192,'thinkingConfig':{'thinkingBudget':0}}},timeout=20)
+            if result.status_code==429:raise HTTPException(429,'A cota gratuita do Gemini acabou. Tente mais tarde.')
+            if result.status_code!=200:raise HTTPException(503,'O Gemini não conseguiu responder. Confira a configuração do servidor.')
+            parts=result.json().get('candidates',[{}])[0].get('content',{}).get('parts',[])
+            answer=' '.join(p.get('text','')for p in parts if not p.get('thought')).strip()[:800]
+            if not answer:raise HTTPException(503,'Não foi possível gerar uma resposta.')
+            s=settings();packet=json.dumps({'id':reserved.json(),'text':answer},ensure_ascii=False).encode()
+            async with api.LiveKitAPI(s['LIVEKIT_URL'],s['LIVEKIT_API_KEY'],s['LIVEKIT_API_SECRET'])as lk:
+                await lk.room.send_data(api.SendDataRequest(room=body.room_name,data=packet,kind=api.DataPacket.RELIABLE,topic='orbita.luladroid'))
+            return {'sent':True}
+        except HTTPException:raise
+        except (httpx.HTTPError,ValueError,KeyError,IndexError):raise HTTPException(503,'O assistente está temporariamente indisponível.')from None
+        except Exception:raise HTTPException(503,'Não foi possível entregar a resposta na chamada.')from None

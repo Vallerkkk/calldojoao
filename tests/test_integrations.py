@@ -1,3 +1,4 @@
+from contextlib import ExitStack
 import os
 import unittest
 from unittest.mock import patch
@@ -15,7 +16,7 @@ class IntegrationTests(unittest.TestCase):
  def setUp(self):
   self.env=patch.dict(os.environ,ENV);self.env.start();self.client=TestClient(app.app)
  def tearDown(self):self.env.stop()
- def remote(self,member=True,friend=True,record=None):
+ def remote(self,member=True,friend=True,record=None,privacy=True):
   async def get(_client,url,**kwargs):
    if url.endswith('/auth/v1/user'):data={'id':USER}
    elif url.endswith('/conversations'):data=[{'id':TARGET,'user_a':USER if member else OTHER,'user_b':OTHER}]
@@ -24,7 +25,9 @@ class IntegrationTests(unittest.TestCase):
    elif url.endswith('/channels'):data=[{'id':TARGET,'kind':'text'}]
    else:raise AssertionError('Unexpected external request: '+url)
    return httpx.Response(200,json=data)
-  return patch.object(httpx.AsyncClient,'get',get)
+  async def privacy_post(_client,url,**kwargs):
+   self.assertTrue(url.endswith('/rpc/can_call_conversation'));return httpx.Response(200,json=privacy)
+  stack=ExitStack();stack.enter_context(patch.object(httpx.AsyncClient,'get',get));stack.enter_context(patch.object(httpx.AsyncClient,'post',privacy_post));return stack
  def post(self,path,**kwargs):return self.client.post(path,headers={'Authorization':'Bearer test'},**kwargs)
  def test_non_member_cannot_join_even_if_upstream_is_wrong(self):
   with self.remote(member=False):self.assertEqual(self.post(f'/api/conversations/{TARGET}/join').status_code,404)
@@ -37,3 +40,7 @@ class IntegrationTests(unittest.TestCase):
  def test_google_credentials_are_not_exposed(self):
   with patch.dict(os.environ,{'GOOGLE_CLIENT_SECRET':'do-not-disclose','GOOGLE_DRIVE_REFRESH_TOKEN':'never-return-token'}):response=self.client.get('/api/config')
   self.assertNotIn('do-not-disclose',response.text);self.assertNotIn('never-return-token',response.text)
+
+ def test_private_call_respects_privacy_even_for_an_existing_friend(self):
+  with self.remote(privacy=False):response=self.post(f'/api/conversations/{TARGET}/join')
+  self.assertEqual(response.status_code,403);self.assertNotIn('token',response.json())

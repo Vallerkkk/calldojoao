@@ -1,0 +1,31 @@
+ORBITA - Como usar
+==================
+
+1. Extraia esta pasta em qualquer lugar.
+2. Dê dois cliques em Orbita.bat
+   - Na primeira vez ele cria o ambiente e instala as dependências (precisa de internet).
+   - Se o .env não existir, ele abre o Bloco de Notas para você preencher.
+3. Preencha o .env com:
+   - SUPABASE_URL
+   - SUPABASE_PUBLISHABLE_KEY
+   - LIVEKIT_URL
+   - LIVEKIT_API_KEY
+   - LIVEKIT_API_SECRET
+4. No Supabase, execute o conteúdo de supabase.sql no SQL Editor.
+5. O navegador abrirá automaticamente em http://127.0.0.1:8000
+
+Requisitos:
+- Windows 10/11
+- Python 3.11 ou superior instalado (marque "Add Python to PATH")
+
+Para encerrar: feche a janela preta do Orbita.bat
+
+Novidades nesta versão:
+- Layout Stage/Gallery para chamadas
+- Áudio da tela mais confiável
+- Volume por participante
+- Presets de qualidade de tela
+- Noise suppression
+- Atalhos de teclado (M, V, Shift+S, D)
+- Picture-in-Picture
+- Reações com overlay

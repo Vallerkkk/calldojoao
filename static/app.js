@@ -1,13 +1,23 @@
-import { initCallLayout } from './call-layout.js?v=call-layout-20261021-3';
-import { initSocialFeed } from './social-feed.js?v=feed-20261020-2';
-import { compressImage, relativeTime, safeLink, stickerNames } from './media-utils.js?v=fluency-20261020-2';
-import { initEnhancements } from './enhancements.js?v=devices-20261020-1';
-import { DraftStore, serialToggle } from './runtime-utils.js?v=fluency-20261020-2';
-import { ConversationCache, MessageOutbox, conversationKey, requestWithDeadline } from './chat-state.js?v=fluency-20261020-2';
-import { reconcileNodes, reserveImage, focusElement } from './dom-utils.js?v=fluency-20261020-2';
-import { choosePrivateCall } from './private-call-menu.js?v=videochamada-20261020-1';
-import { initCallTranscription } from './call-transcription.js?v=luladroid-20261021-1';
-let enhancements, feed, callLayout, callTranscription;
+import './ui-polish.js';
+import {initSocialLogin} from './social-login.js';
+import {initNavigationMotion} from './navigation-motion.js';
+import {DECORATIONS} from './profile-decoration-catalog.js';
+import {initShareReceiver} from './share-target.js';
+import {initThemeAccessibility,foreground} from './theme-accessibility.js';
+import {initAppUpdates} from './app-updates.js';
+import {loadStyle} from './lazy-assets.js';
+import {initAudioControls} from './audio-controls.js';
+import {initCallReactions} from './call-reactions.js';
+import { initCommunityUX } from './community-ux.js';
+import { initCallLayout } from './call-layout.js';
+import { watchUploadedVideo,setUploadedVideoOutput } from './uploaded-video.js';
+import { compressImage, relativeTime, safeLink, stickerNames } from './media-utils.js';
+import { initEnhancements } from './enhancements.js';
+import { DraftStore, serialToggle } from './runtime-utils.js';
+import { ConversationCache, MessageOutbox, conversationKey, requestWithDeadline } from './chat-state.js';
+import { reconcileNodes, reserveImage, focusElement } from './dom-utils.js';
+import { choosePrivateCall } from './private-call-menu.js';
+let shareReceiver, enhancements, feed, callLayout, communityUX, audioTools, callReactions;
 const drafts = new DraftStore(), pendingSends = new Set();
 const draftKey = target => session && target ? session.user.id + ':' + (target.private ? 'dm:' : 'channel:') + target.id : '';
 function saveComposerDraft() { if (!home && selected?.kind === 'text') drafts.set(draftKey(selected), $('message-input').value); }
@@ -19,7 +29,9 @@ function updateComposer() { $('send').disabled=!navigator.onLine||pendingSends.h
 const $ = id => document.getElementById(id);
 let db, config, session, channels = [], selected, signup = false;
 let subscription, generation = 0, messages = new Map(), oldest, hasMore = false, loading = false;
-let room, callChannel, joining = false, shuttingDown = false;
+let lulaController,lulaTask;
+let room, callChannel, joining = false, shuttingDown = false, callJoin;
+function cancelCallJoin() { callJoin?.abort(); callJoin=null; joining=false; }
 let cameraFacing=localStorage.getItem('orbita-camera-facing')==='environment'?'environment':'user',cameraTask;
 const cameraTrackFacing=new WeakMap();
 const mobileCamera=()=>matchMedia('(max-width:780px), (pointer:coarse)').matches;
@@ -70,12 +82,13 @@ function errorText(error) {
   if (error?.name === 'NotAllowedError') return 'Permissão recusada. Autorize o dispositivo no navegador.';
   if (error?.name === 'NotFoundError') return 'Nenhum dispositivo compatível foi encontrado.';
   if (error?.message === 'Invalid login credentials') return 'E-mail ou senha incorretos.';
+  if(error?.message==='Database error saving new user')return 'Não foi possível criar a conta. Tente outro nickname; ele pode já estar em uso.';
   if (error?.message === 'Email not confirmed') return 'Confirme seu e-mail antes de entrar.';
   return error?.message || 'Não foi possível concluir. Tente novamente.';
 }
 
 $('toggle-auth').onclick = () => {
-  signup = !signup; $('name-label').hidden = !signup; $('display-name').required = signup;
+  signup = !signup; $('name-label').hidden = !signup; $('display-name').required = signup;$('display-name').disabled=!signup;
   $('auth-title').textContent = signup ? 'Sua galera espera você.' : 'Bom ter você aqui.';
   $('auth-description').textContent = signup ? 'Crie uma conta e entre na conversa.' : 'Entre para encontrar a sua galera.';
   $('auth-submit').textContent = signup ? 'Criar minha conta ↗' : 'Entrar na Órbita ↗';
@@ -86,6 +99,7 @@ $('auth-form').onsubmit = async event => {
   event.preventDefault(); if (!db) return;
   $('auth-submit').disabled = true; $('auth-status').textContent = '';
   try {
+    if(signup&&!/^[A-Za-z0-9_]{3,24}$/.test($('display-name').value.trim()))throw Error('Escolha um nickname de 3 a 24 letras, números ou _.');
     const credentials = {email: $('email').value.trim(), password: $('password').value};
     const {data, error} = signup
       ? await db.auth.signUp({...credentials, options: {data: {display_name: $('display-name').value.trim()}}})
@@ -100,19 +114,23 @@ $('auth-form').onsubmit = async event => {
 let sessionTransition=0,sessionReady=false,sessionInitializing=false;
 async function showSession(next) {
   if(session?.user.id===next?.user.id&&next&&(sessionReady||sessionInitializing)){session=next;return;}
+  cancelCallJoin();
   feed?.sessionChanged();
-  sessionInitializing=!!next;sessionReady=false;sessionRecovery.hidden=true;
+  sessionInitializing=!!next;sessionReady=false;sessionRecovery.hidden=true;setEntryBusy(!!next);
   const previousUser=session?.user.id,transition=++sessionTransition;
   stopConversation();generation++;
   if(previousUser&&previousUser!==next?.user.id){
+    // Close old-account dialogs before any asynchronous cleanup or profile loading.
+    $('app-dialog').close();closeMobileMenu();
     session=null;$('app-view').hidden=true;$('message-list').replaceChildren();
     const old=[socialSubscription,presenceChannel,extraSubscription];socialSubscription=presenceChannel=extraSubscription=null;
     await leaveCall();await Promise.all(old.filter(Boolean).map(channel=>db.removeChannel(channel).catch(()=>{})));await enhancements?.sessionChanged();
     if(transition!==sessionTransition)return;
   }
   session = next;
+  if(next){const pending=sessionStorage.getItem('orbita-oauth-return');if(pending){const target=new URL(location.href);for(const [key,value]of new URLSearchParams(pending))if(['invite','post','profile','channel','dm','message','story'].includes(key))target.searchParams.set(key,value);history.replaceState(null,'',target);sessionStorage.removeItem('orbita-oauth-return');}}
   conversationCache.clear();outbox.clear();communityViews.clear();channelNodes.clear();voiceTrees.clear();memberNodes.clear();communityNodes.clear();lastViewport=null;
-  drafts.clear();pendingSends.clear();$('message-input').value='';
+  welcomeAccess.clear();drafts.useAccount(next?.user.id,localStorage);pendingSends.clear();$('message-input').value='';
   people=[];peopleById.clear();peopleByUsername.clear();profileMediaUrls.clear();friendships=[];conversations=[];profile=null;selected=null;channels=[];messages.clear();communities=[];siteRoles=[];communityRoleList=[];memberRoles=[];communityMemberList=[];communityEmojiList=[];communityEmojiUrls.clear();online.clear();publicVoicePresence=[];lastPresenceSignature='';home=false;
   for(const id of ['message-list','text-channels','voice-channels','member-list','dm-channels','rail-servers-list'])$(id).replaceChildren();
   attachmentUrls.clear();messageRows.clear();renderedScope='';
@@ -125,18 +143,23 @@ async function showSession(next) {
     people=[];peopleById.clear();peopleByUsername.clear();profileMediaUrls.clear();friendships=[];conversations=[];profile=null;selected=null;channels=[];messages.clear();$('message-list').replaceChildren();sessionInitializing=false;await enhancements?.sessionChanged();return;
   }
   const name = next.user.user_metadata?.display_name || 'Participante';
-  $('user-name').textContent = name; $('user-avatar').textContent = initials(name);
+  $('user-name').textContent = name;setAvatar($('user-avatar'),{id:next.user.id,display_name:name,avatar_color:'#8b80ff'});
   try {
     // Cria o vínculo padrão antes da primeira consulta de canais protegida por RLS.
     await initSocial();
     if (!session || session.user.id !== next.user.id||transition!==sessionTransition) return;
-    channels = await checked(db.from('channels').select('*').order('position'));
+    await chooseOAuthNickname(next);if(transition!==sessionTransition)return;
+    if(!await ensureCommunityWelcome(activeCommunity)){showFriends();sessionReady=true;return;}
+    const loadedChannels = await checked(db.from('channels').select('*').order('position'));
+    if(transition!==sessionTransition||session?.user.id!==next.user.id)return;channels=loadedChannels;
     if (!channels.length) {renderCommunityRail();showFriends();sessionReady=true;await enhancements.sessionChanged();return;}
-    renderChannels();await loadCommunityAccess();await selectChannel(channels.find(c => c.community_id===activeCommunity&&c.default_for_new_members&&c.kind==='text')||channels.find(c => c.community_id===activeCommunity&&c.kind === 'text') || channels.find(c=>c.community_id===activeCommunity) || channels[0]);
-    if(transition===sessionTransition)sessionReady=true;
+    renderChannels();await loadCommunityAccess();
+    if(transition!==sessionTransition||session?.user.id!==next.user.id)return;
+    await selectChannel(channels.find(c => c.community_id===activeCommunity&&c.default_for_new_members&&c.kind==='text')||channels.find(c => c.community_id===activeCommunity&&c.kind === 'text') || channels.find(c=>c.community_id===activeCommunity) || channels[0]);
+    if(transition===sessionTransition){sessionReady=true;trackVisibleActivity().catch(()=>{});}
   }catch(error){if(transition===sessionTransition){toast('Não foi possível carregar a comunidade: '+errorText(error));sessionRecovery.hidden=false;}}
-  finally{if(transition===sessionTransition)sessionInitializing=false;}
-  if(transition===sessionTransition){await enhancements.sessionChanged();feed?.deepLink();}
+  finally{if(transition===sessionTransition){sessionInitializing=false;setEntryBusy(false);}}
+  if(transition===sessionTransition){await enhancements.sessionChanged();feed?.deepLink();const publicProfile=new URL(location.href).searchParams.get('profile');if(/^[0-9a-f-]{36}$/i.test(publicProfile||''))feed.open('profile',{author:publicProfile});shareReceiver?.resume();const story=new URL(location.href).searchParams.get('story');if(/^[0-9a-f-]{36}$/i.test(story||'')){const tools=await loadSocialTools();if(transition===sessionTransition)tools.stories(story);}}
 }
 $('logout').onclick = async () => {
   try { await enhancements?.disablePush(true); } catch {}
@@ -319,18 +342,19 @@ async function validateCachedMessages(version,target){
   }catch(error){if(version===generation&&error.name!=='AbortError'){historyError='Parte do histórico não pôde ser conferida. Tente novamente.';renderMessages();}}finally{if(version===generation)cacheValidating=false;}
 }
 // Reuse unchanged rows so live updates preserve images, focus and open controls.
-const messageRows=new Map();
+const messageRows=new Map(),dayDividers=new Map();
 let renderedScope='',rowStyleKey='',rowStyleRevision=0;
 function createMessageRow(message,grouped=false) {
     const messageProfile=peopleById.get(message.author_id)||message.profiles||{},name = messageProfile.display_name || 'Participante';
     const item = el('article', 'message'), content = el('div', 'message-content'), meta = el('div', 'message-meta');
+    item.dataset.shortTime=new Date(message.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     const time = el('time', '', relativeTime(message.created_at));
-    time.dateTime = message.created_at;time.title=new Date(message.created_at).toLocaleString('pt-BR');const messageName=el('strong','',name),messageRoles=memberRoles.filter(r=>r.user_id===message.author_id).map(r=>communityRoleList.find(role=>role.id===r.role_id)).filter(Boolean).sort((a,b)=>b.position-a.position);if(messageRoles[0]){messageName.style.color=messageRoles[0].color;messageName.append(el('span','role-badge',messageRoles[0].name));}meta.append(messageName,time);
+    time.dateTime = message.created_at;time.title=new Date(message.created_at).toLocaleString('pt-BR');const messageName=el('strong','',name),messageRoles=memberRoles.filter(r=>r.user_id===message.author_id).map(r=>communityRoleList.find(role=>role.id===r.role_id)).filter(Boolean).sort((a,b)=>b.position-a.position);if(messageRoles[0]){messageName.style.color=messageRoles[0].color;messageName.append(el('span','role-badge',messageRoles[0].name));}meta.append(messageName,time);messageName.tabIndex=0;messageName.setAttribute('role','button');messageName.setAttribute('aria-label','Abrir perfil de '+name);messageName.onclick=()=>showProfile(person(message.author_id));messageName.onkeydown=e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();messageName.click();}};
     if(message.pinned)meta.append(el('small','pin-label','◆ Fixada'));
     content.append(meta);
-    if(message.reply_to){const original=messages.get(message.reply_to);content.append(el('div','reply-card',original?(original.profiles?.display_name||'Participante')+': '+original.content.slice(0,150):'↪ Resposta a uma mensagem anterior'));}
+    if(message.reply_to){const original=messages.get(message.reply_to);const quote=button(original?(original.profiles?.display_name||'Participante')+': '+original.content.slice(0,150):'↪ Resposta a uma mensagem anterior',()=>jumpToReply(message.reply_to),'reply-card');quote.setAttribute('aria-label','Ir para a mensagem respondida');content.append(quote);}
     content.append(safeRichText(message.content));if(message.poll)content.append(renderPoll(message));
-    if(message.attachments){const a=message.attachments;if(a.mime_type?.startsWith('image/')){const preview=el('img','attachment-preview');preview.alt=a.name;preview.loading='lazy';reserveImage(preview);content.append(preview);resolveAttachmentUrl(a).then(url=>preview.src=url).catch(()=>preview.remove());}content.append(button('↓ '+a.name+' · '+(a.size/1024/1024).toFixed(1)+' MB',()=>downloadAttachment(a),'file-card'));}
+    if(message.attachments){const a=message.attachments;if(a.mime_type?.startsWith('image/')){const preview=el('img','attachment-preview');preview.alt=a.name;preview.loading='lazy';reserveImage(preview);content.append(preview);resolveAttachmentUrl(a).then(url=>preview.src=url).catch(()=>preview.remove());}else if(a.mime_type?.startsWith('video/')){const preview=watchUploadedVideo(el('video'));preview.setAttribute('aria-label','Vídeo: '+a.name);content.append(preview);resolveAttachmentUrl(a).then(url=>{if(preview.isConnected)preview.src=url;}).catch(()=>preview.remove());}content.append(button('↓ '+a.name+' · '+(a.size/1024/1024).toFixed(1)+' MB',()=>downloadAttachment(a),'file-card'));}
     if(message.local_state){item.classList.add('message-local');item.dataset.delivery=message.local_state;const delivery=el('div','message-delivery');delivery.append(el('span','',message.local_state==='sending'?'Enviando…':message.local_state==='checking'?'Verificando envio…':message.local_state==='uncertain'?'Envio não confirmado.':('Falha no envio: '+(message.local_error||'tente novamente.'))));if(!['sending','checking'].includes(message.local_state)){delivery.append(button(message.local_state==='uncertain'?'Verificar envio':'Tentar novamente',()=>retryMessage(message.id),'text-button'),button('Descartar',()=>{outbox.remove(message.id);renderMessages();},'text-button'));}content.append(delivery);const avatar=el('div','avatar');setAvatar(avatar,messageProfile);item.append(avatar,content);item.dataset.messageId=message.id;return item;}
     const actions=el('div','message-actions');actions.append(button('Responder',()=>replyToMessage(message),'tiny-button'));
     for(const emoji of ['👍','❤️','😂','🎉','🔥','👀']){const count=(message.reactions||[]).filter(r=>r.emoji===emoji).length;actions.append(button(emoji+(count?' '+count:''),()=>react(message,emoji),'reaction'));}
@@ -342,12 +366,12 @@ function createMessageRow(message,grouped=false) {
     menu.append(trigger,actions);content.append(menu);
     const used=[...new Set((message.reactions||[]).map(r=>r.emoji))];
     if(used.length){const reactions=el('div','message-reactions');for(const emoji of used){const count=message.reactions.filter(r=>r.emoji===emoji).length,reactButton=button(emoji+' '+count,()=>react(message,emoji),'reaction');reactButton.classList.toggle('mine',message.reactions.some(r=>r.emoji===emoji&&r.user_id===session.user.id));if(communityEmojiUrls.has(emoji)){const icon=el('img','inline-custom-emoji');icon.src=communityEmojiUrls.get(emoji);icon.alt=emoji;reactButton.replaceChildren(icon,document.createTextNode(' '+count));}reactions.append(reactButton);}content.append(reactions);}
-    const avatar=el('div','avatar');setAvatar(avatar,messageProfile);
+    const avatar=el('div','avatar');setAvatar(avatar,messageProfile);avatar.tabIndex=0;avatar.setAttribute('role','button');avatar.setAttribute('aria-label','Abrir perfil de '+name);avatar.onclick=()=>showProfile(person(message.author_id));avatar.onkeydown=e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();avatar.click();}};
     item.append(avatar,content);enhancements?.enhanceMessage(item,message);item.classList.toggle('message-grouped',grouped);return item;
 }
 function renderMessages(scroll = false, position) {
   const list=$('message-list'),saved=position||lastViewport||capturePosition(),scope=(selected?.private?'dm:':'channel:')+selected?.id;
-  if(renderedScope!==scope){messageRows.clear();list.replaceChildren();renderedScope=scope;}
+  if(renderedScope!==scope){messageRows.clear();dayDividers.clear();list.replaceChildren();renderedScope=scope;}
   const nodes=[];list.classList.toggle('history-long',messages.size>200);list.setAttribute('aria-busy',String(loading||initialHistory));
   const welcome=list.querySelector('.welcome')||el('div','welcome');
   if(!welcome.childNodes.length){welcome.append(el('div','welcome-icon','#'),el('h1','',(selected.private?'Sua conversa com ':'Bem-vindo a #')+selected.name),el('p','',selected.private?'Mensagens e chamadas visíveis apenas para vocês dois.':'Um espaço para conversar, compartilhar e estar junto.'));}
@@ -358,7 +382,9 @@ function renderMessages(scroll = false, position) {
   const shared=JSON.stringify([memberRoles,communityRoleList,communityEmojiList,[...communityEmojiUrls],session.user.id,hasCommunityPermission('manage_messages')]),keep=new Set();
   if(shared!==rowStyleKey){rowStyleKey=shared;rowStyleRevision++;}
   let previous;
+  const usedDays=new Set(),now=new Date(),yesterday=new Date();yesterday.setDate(now.getDate()-1);let lastDay;
   for(const message of sorted){
+    const day=new Date(message.created_at).toDateString();if(day!==lastDay){let divider=dayDividers.get(day);if(!divider){divider=el('div','ux-day-divider');divider.setAttribute('role','separator');dayDividers.set(day,divider);}const label=day===now.toDateString()?'Hoje':day===yesterday.toDateString()?'Ontem':new Date(message.created_at).toLocaleDateString('pt-BR',{day:'numeric',month:'long',year:'numeric'});if(divider.textContent!==label)divider.textContent=label;divider.setAttribute('aria-label',label);nodes.push(divider);usedDays.add(day);lastDay=day;}
     const grouped=!!previous&&previous.author_id===message.author_id&&!message.reply_to&&!message.pinned&&new Date(message.created_at)-new Date(previous.created_at)<300000&&new Date(message.created_at).toDateString()===new Date(previous.created_at).toDateString();
     const quoted=message.reply_to?messages.get(message.reply_to):null;
     const author=peopleById.get(message.author_id)||message.profiles||{};const mentions=[...message.content.matchAll(/@([A-Za-z0-9_]{3,24})/g)].map(match=>peopleByUsername.get(match[1].toLowerCase())?.id||'');
@@ -368,6 +394,7 @@ function renderMessages(scroll = false, position) {
     nodes.push(cached.node);keep.add(message.id);previous=message;
   }
   for(const id of messageRows.keys())if(!keep.has(id))messageRows.delete(id);
+  for(const key of dayDividers.keys())if(!usedDays.has(key))dayDividers.delete(key);
   reconcileNodes(list,nodes);restorePosition(scroll?{atBottom:true}:saved);
 }
 $('message-input').onkeydown = event => {
@@ -480,7 +507,7 @@ function syncCallMedia() {
   const participants = room ? new Set([room.localParticipant.identity, ...room.remoteParticipants.keys()]) : new Set();
   for (const entry of [...callMedia.values()]) {
     if (!participants.has(entry.participantId)) { disposeMedia(entry); continue; }
-    if (entry.tile) entry.tile.hidden = !!(entry.track.isMuted || entry.publication?.isMuted);
+    if (entry.tile){entry.tile.hidden=!!(entry.track.isMuted||entry.publication?.isMuted);const label=entry.tile.querySelector('figcaption>span'),nickname=peopleById.get(entry.participantId)?.display_name;if(label&&nickname){const value=nickname+(entry.source==='screen_share'?' · Tela':' · Câmera');if(label.textContent!==value)label.textContent=value;}}
   }
 }
 function onTrack(track, participant, publication) {
@@ -502,9 +529,9 @@ function onTrack(track, participant, publication) {
     const figure = el('figure', 'media-tile' + (isScreen ? ' media-screen' : '')); if(sid)figure.dataset.track=sid;figure.dataset.participantId=participant.identity;entry.tile=figure;
     media.muted = true; media.playsInline = true;
     const caption = el('figcaption');
-    caption.append(el('span', '', (participant.name || 'Participante') + (isScreen ? ' · Tela' : ' · Câmera')));
+    caption.append(el('span', '', (peopleById.get(participant.identity)?.display_name || participant.name || 'Participante') + (isScreen ? ' · Tela' : ' · Câmera')));
     const expand = el('button', 'expand-video', 'Tela cheia');
-    expand.type = 'button'; expand.setAttribute('aria-label', `Ver ${isScreen ? 'tela' : 'câmera'} de ${participant.name || 'Participante'} em tela cheia`);
+    expand.type = 'button'; expand.setAttribute('aria-label', `Ver ${isScreen ? 'tela' : 'câmera'} de ${peopleById.get(participant.identity)?.display_name || participant.name || 'Participante'} em tela cheia`);
     expand.onclick = async () => {
       try {
         if (document.fullscreenElement === figure) await document.exitFullscreen();
@@ -520,6 +547,8 @@ function onTrack(track, participant, publication) {
     const failed=()=>{status.hidden=false;status.textContent='Não foi possível reproduzir este vídeo. Tente desligar e ligar a câmera.';figure.classList.add('media-loading');};
     for(const [event,handler] of [['loadeddata',ready],['playing',ready],['waiting',waiting],['emptied',waiting],['error',failed]]) {media.addEventListener(event,handler);entry.cleanups.push(()=>media.removeEventListener(event,handler));}
     figure.classList.add('media-loading');frame.append(media,status);figure.append(frame,caption);
+    figure.ondblclick=event=>{if(event.target.closest('button,a,input,select'))return;event.preventDefault();expand.click();};
+    media.title='Clique duas vezes para tela cheia';
     $('media-grid').append(figure);if(media.readyState>=2)ready();
   } else { media.dataset.remoteAudio = 'true';media.dataset.participantId=participant.identity;media.dataset.audioSource=entry.source;document.body.append(media);applyRemoteVolume(entry); }
   syncCallMedia();syncLocalCameraPreview();callLayout?.update();
@@ -555,7 +584,7 @@ function updateCallUI() {
       let card=participantCards.get(participant.identity);
       if(!card){card=el('div','participant');card.dataset.participantId=participant.identity;card.append(el('span','avatar'),el('strong','participant-name'),el('small','participant-status'));
         participantCards.set(participant.identity,card);}
-      card.classList.toggle('speaking',!!participant.isSpeaking);const name=participant.name||'Participante';card.querySelector('.avatar').textContent=initials(name);card.querySelector('.participant-name').textContent=name;
+      card.classList.toggle('speaking',!!participant.isSpeaking);const name=peopleById.get(participant.identity)?.display_name||participant.name||'Participante';card.querySelector('.avatar').textContent=initials(name);card.querySelector('.participant-name').textContent=name;
       card.querySelector('.participant-status').textContent=`${participant.isMicrophoneEnabled?'Microfone ligado':'Microfone desligado'} · ${qualityText(participant.connectionQuality)}`;
       for(const slider of card.querySelectorAll('input[data-audio-source]')){
         const source=slider.dataset.audioSource;slider.setAttribute('aria-label',(source==='microphone'?'Volume do microfone de ':'Volume da transmissão de ')+name);
@@ -577,31 +606,41 @@ function updateSpeakingUI() {
   for(const card of participantCards.values())card.classList.toggle('speaking',speaking.has(card.dataset.participantId));
   for(const entry of callMedia.values())if(entry.tile)entry.tile.classList.toggle('speaking',speaking.has(entry.participantId));
 }
-async function leaveCall() {
+async function leaveCall({preserveJoin=false}={}) {
+  if(!preserveJoin)cancelCallJoin();
   cameraTask=null;const previous = room;if(previous)microphoneSwitch.set(previous.localParticipant,false);room = null;callChannel = null;talkHeld=false;
-  enhancements?.callEnded(previous);callTranscription?.callEnded();
+  lulaController?.stop();lulaController=null;
+  enhancements?.callEnded(previous);callReactions?.clear();
   if (previous) previous.removeAllListeners();
   for(const entry of [...callMedia.values()])disposeMedia(entry);
   document.querySelectorAll('[data-remote-audio]').forEach(node => node.remove());
   $('media-grid').replaceChildren(); updateCallUI();
-  if (previous) await previous.disconnect();
+  if (previous) {try{await previous.disconnect();}finally{await audioTools?.ended(previous);}}
 }
 $('join-call').onclick = async () => {
   if (joining || !session || selected?.kind !== 'voice') return;
-  joining = true; updateCallUI(); const target = selected;
+  const operation=new AbortController(),account=session.user.id,target={...selected};callJoin=operation;
+  const current=()=>callJoin===operation&&!operation.signal.aborted&&session?.user.id===account&&!shuttingDown;
+  joining = true; updateCallUI(); let connected;
   try {
     const {data: {session: fresh}} = await db.auth.getSession();
-    if (!fresh) throw Error('Sua sessão expirou. Entre novamente.');
-    const response = await fetch(`/api/${target.private?'conversations':'channels'}/${target.id}/join`, {method:'POST', headers:{Authorization:`Bearer ${fresh.access_token}`}});
-    const result = await response.json(); if (!response.ok) throw Error(result.detail || 'Não foi possível entrar.');
-    const {Room, RoomEvent, VideoPresets, ScreenSharePresets} = await import('https://cdn.jsdelivr.net/npm/livekit-client@2.15.6/+esm');
-    if (!session || shuttingDown) return;
-    await leaveCall();
+    if(!current())return;
+    if (!fresh || fresh.user.id!==account) throw Error('Sua sessão expirou. Entre novamente.');
+    const result=await requestWithDeadline(async signal=>{
+      const response=await fetch(`/api/${target.private?'conversations':'channels'}/${target.id}/join`,{method:'POST',headers:{Authorization:`Bearer ${fresh.access_token}`},signal});
+      const data=await response.json().catch(()=>{throw Error('O servidor não respondeu corretamente. Tente novamente.');});
+      if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'Não foi possível entrar.');return data;
+    },{signal:operation.signal,timeout:30000});
+    if(!current())return;
+    const {Room, RoomEvent, VideoPresets, ScreenSharePresets} = await requestWithDeadline(()=>import('https://cdn.jsdelivr.net/npm/livekit-client@2.15.6/+esm'),{signal:operation.signal,timeout:30000});
+    if (!current()) return;
+    await leaveCall({preserveJoin:true});
+    if(!current())return;
     const media=mediaSettings();
-    const connected = new Room({
+    connected = new Room({
       adaptiveStream: {pixelDensity:'screen'},
       dynacast:true,
-      webAudioMix:typeof (window.AudioContext||window.webkitAudioContext)==='function',
+      webAudioMix:audioTools.mixOptions(),
       audioCaptureDefaults:audioCapture(),
       videoCaptureDefaults:media.cameraCapture,
       publishDefaults: {
@@ -616,11 +655,11 @@ $('join-call').onclick = async () => {
             ?[ScreenSharePresets.h720fps15,ScreenSharePresets.h1080fps15]
             :[ScreenSharePresets.h720fps30,ScreenSharePresets.h1080fps30],
       },
-    }); room = connected; callChannel = target;
+    }); audioTools.bind(connected);room = connected; callChannel = target;
     connected.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {if(room!==connected)return;onTrack(track, participant, publication);updateCallUI();})
       .on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {if(room!==connected)return;removeTrack(track, publication, participant);updateCallUI();})
       .on(RoomEvent.TrackUnpublished, (publication, participant) => {if(room!==connected)return;removeTrack(publication.track,publication,participant);updateCallUI();})
-      .on(RoomEvent.LocalTrackPublished, publication => { if(room!==connected)return;if(publication.track?.kind==='video')onTrack(publication.track,connected.localParticipant,publication);updateCallUI(); })
+      .on(RoomEvent.LocalTrackPublished, publication => { if(room!==connected)return;if(publication.track?.kind==='audio')audioTools?.sync(connected).catch(()=>{});if(publication.track?.kind==='video')onTrack(publication.track,connected.localParticipant,publication);updateCallUI(); })
       .on(RoomEvent.LocalTrackUnpublished, publication => {if(room!==connected)return;removeTrack(publication.track,publication,connected.localParticipant);updateCallUI();});
     for (const event of [RoomEvent.ParticipantConnected, RoomEvent.ParticipantDisconnected, RoomEvent.TrackMuted, RoomEvent.TrackUnmuted]) connected.on(event, updateCallUI);
     connected.on(RoomEvent.ActiveSpeakersChanged,updateSpeakingUI);
@@ -630,13 +669,17 @@ $('join-call').onclick = async () => {
     connected.on(RoomEvent.Reconnected, updateCallUI);
     connected.on(RoomEvent.Disconnected, () => { if (room === connected) { leaveCall(); toast('Você saiu da chamada.'); } });
     await connected.connect(result.url, result.token);
-    if (!session || room !== connected) { await connected.disconnect(); return; }
+    if (!current() || room !== connected) { await connected.disconnect(); return; }
     try { await connected.startAudio(); } catch { toast('A chamada entrou. Toque na tela para liberar o áudio neste navegador.'); }
-    enhancements.connected(connected,RoomEvent,result);callTranscription?.connected(connected);
+    if(!current()||room!==connected){await connected.disconnect();return;}
+    enhancements.connected(connected,RoomEvent,result);
+    loadLuladroid(connected,target).catch(()=>{});
     try { if(result.canPublish!==false)await connected.localParticipant.setMicrophoneEnabled(!pushToTalk&&!deafened, audioCapture()); }
     catch (error) { toast('Você entrou sem microfone. ' + errorText(error)); }
-  } catch (error) { await leaveCall(); toast(errorText(error)); }
-  finally { joining = false; updateCallUI(); }
+    if(current()&&room===connected)await audioTools?.connected(connected);
+    if(!current()||room!==connected)await connected.disconnect();
+  } catch (error) { if(current()){if(room===connected)await leaveCall({preserveJoin:true});toast(errorText(error));} }
+  finally { if(callJoin===operation){callJoin=null;joining=false;updateCallUI();} }
 };
 $('leave-call').onclick = () => leaveCall();
 if(!canShareScreen){$('screen').disabled=true;$('screen').title='Este navegador não suporta compartilhar a tela';}
@@ -668,6 +711,8 @@ function updateCameraControl(){
   const switchBtn = $('camera-switch');
   if (switchBtn) {
     switchBtn.hidden = !mobile || !camOn;
+    switchBtn.disabled = !room || room.localParticipant.permissions?.canPublish===false || !!cameraTask;
+    switchBtn.setAttribute('aria-label',cameraFacing === 'user' ? 'Trocar para câmera traseira' : 'Trocar para câmera frontal');
     switchBtn.title = cameraFacing === 'user' ? 'Trocar para câmera traseira' : 'Trocar para câmera frontal';
     switchBtn.textContent = cameraFacing === 'user' ? '🔄 Traseira' : '🔄 Frontal';
   }
@@ -698,25 +743,28 @@ facingSelect.onchange=async()=>{
 };
 window.addEventListener('resize',updateCameraControl);
 document.addEventListener('pointerdown',()=>{const current=room;if(current?.state==='connected'&&current.canPlaybackAudio===false)current.startAudio().then(()=>{if(room===current)syncRemoteVolumes();}).catch(()=>{});},{passive:true});
-window.addEventListener('pagehide', () => { shuttingDown = true;if(presenceChannel)presenceChannel.untrack(); if (room) room.disconnect(); });
-window.addEventListener('pageshow', () => { shuttingDown = false; });
+window.addEventListener('pagehide', () => { shuttingDown = true;cancelCallJoin();if(presenceChannel)presenceChannel.untrack();leaveCall().catch(()=>{}); });
+window.addEventListener('pageshow', event => { shuttingDown = false;if(event.persisted&&session){publishVoicePresence(true).catch(()=>{});if(!home&&selected?.kind==='text'){subscribeMessages(selected,generation);loadMessages(generation,true);}} });
 
+function setEntryBusy(busy){const entry=$('entry-animation');if(entry)entry.hidden=!busy;$('app-view').inert=busy;$('auth-view').inert=busy;}
 const startupRetry=el('button','soft-button','Tentar novamente');startupRetry.type='button';startupRetry.hidden=true;startupRetry.onclick=()=>boot();$('auth-status').after(startupRetry);
 const sessionRecovery=el('div','session-recovery');sessionRecovery.hidden=true;sessionRecovery.setAttribute('role','status');sessionRecovery.append(el('p','','Não foi possível carregar sua comunidade.'),button('Tentar carregar novamente',()=>showSession(session)));document.body.append(sessionRecovery);
 let booting=false;
 window.addEventListener('online',()=>{if(!startupRetry.hidden)boot();});
 async function boot() {
-  if(booting)return;booting=true;startupRetry.hidden=true;$('auth-status').textContent='';
+  if(booting)return;booting=true;setEntryBusy(true);startupRetry.hidden=true;$('auth-status').textContent='';
   try {
-    const response=await fetch('/api/config');if(!response.ok)throw Error('O servidor está indisponível. Aguarde e tente novamente.');config=await response.json();
+    config=await requestWithDeadline(async signal=>{const response=await fetch('/api/config',{signal});if(!response.ok)throw Error('O servidor está indisponível. Aguarde e tente novamente.');return response.json();},{timeout:30000});
+    if(config.sentryDsn||config.umamiScript)import('./telemetry.js').then(module=>module.configureTelemetry(config)).catch(()=>{});
     if (!config.configured) { $('setup').hidden = false; $('auth-submit').disabled = true; return; }
-    const {createClient} = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/+esm');
+    const {createClient} = await requestWithDeadline(()=>import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/+esm'),{timeout:30000});
     if(!db){db=createClient(config.supabaseUrl,config.supabaseKey);
     // Supabase calls run outside the Auth callback to avoid locking the session.
     db.auth.onAuthStateChange((_event,next)=>{setTimeout(()=>showSession(next).catch(error=>toast(errorText(error))),0);});}
-    const {data, error} = await db.auth.getSession(); if (error) throw error;
+    await socialLogin.ready(db,config);
+    const {data, error} = await requestWithDeadline(()=>db.auth.getSession(),{timeout:30000}); if (error) throw error;
     await showSession(data.session);$('auth-submit').disabled=false;
-  }catch(error){$('auth-status').textContent='Não foi possível conectar. '+errorText(error);$('auth-submit').disabled=true;startupRetry.hidden=false;}finally{booting=false;}
+  }catch(error){$('auth-status').textContent='Não foi possível conectar. '+errorText(error);$('auth-submit').disabled=true;startupRetry.hidden=false;}finally{booting=false;if(!sessionInitializing)setEntryBusy(false);}
 }
 // Social features share the authenticated Supabase client and its row policies.
 let peopleById=new Map(),peopleByUsername=new Map();const profileMediaUrls=new Map();
@@ -732,7 +780,8 @@ const audioCapture = () => ({
   noiseSuppression: noise,
   echoCancellation: echoCancellation,
   autoGainControl: autoGainControl,
-  channelCount: 1
+  channelCount: 1,
+  ...audioTools?.capture()
 });
 const scopeKey = target => target?.private ? 'conversation_id' : 'channel_id';
 const messageTable = () => selected?.private ? 'direct_messages' : 'messages';
@@ -744,7 +793,7 @@ async function checked(query) { const result=await query; if(result.error) throw
 async function apiFetch(path, options={}) {
   const {data:{session:fresh}}=await db.auth.getSession();
   if(!fresh) throw Error('Entre novamente na sua conta.');
-  const response=await fetch(path,{...options,headers:{...options.headers,Authorization:`Bearer ${fresh.access_token}`}});
+  const response=await requestWithDeadline(signal=>fetch(path,{...options,signal,headers:{...options.headers,Authorization:`Bearer ${fresh.access_token}`}}),{signal:options.signal,timeout:30000});
   if(!response.ok) {const error=await response.json().catch(()=>({}));throw Error(error.detail||'Não foi possível concluir.');}
   return response;
 }
@@ -794,7 +843,7 @@ async function loadSocial() {
   if(session?.user.id!==userId||revision!==socialRevision)return;[people,friendships,conversations]=results;peopleById=new Map(people.map(p=>[p.id,p]));peopleByUsername=new Map(people.map(p=>[p.username?.toLowerCase(),p]));
   profile=person(session.user.id);await hydrateProfileMedia();if(session?.user.id!==userId||revision!==socialRevision)return;$('user-name').textContent=profile.display_name;
   setAvatar($('user-avatar'),profile);
-  renderSocial();renderMembers();if(home)renderFriends();
+  renderSocial();renderMembers();if(home)renderFriends();if(room)updateCallUI();
 }
 async function hydrateProfileMedia(){
   const profiles=people,uid=session?.user.id,paths=[...new Set(profiles.flatMap(p=>[p.avatar_url,p.banner_url].filter(Boolean)))];
@@ -803,11 +852,14 @@ async function hydrateProfileMedia(){
   while(profileMediaUrls.size>256)profileMediaUrls.delete(profileMediaUrls.keys().next().value);
   for(const p of profiles){p.avatar_src=profileMediaUrls.get(p.avatar_url)?.url||'';p.banner_src=profileMediaUrls.get(p.banner_url)?.url||'';}
 }
-function setAvatar(node,p){node.textContent=initials(p?.display_name);node.style.backgroundColor=p?.avatar_color||'#8b80ff';node.style.backgroundImage=p?.avatar_src?`url("${p.avatar_src.replaceAll('"','%22')}")`:'';node.classList.toggle('has-photo',!!p?.avatar_src);}
+function setAvatar(node,p){node.dataset.userId=p?.id||'';node.textContent=initials(p?.display_name);node.style.backgroundColor=p?.avatar_color||'#8b80ff';node.style.color=p?.avatar_src?'transparent':foreground(p?.avatar_color||'#8b80ff');node.style.backgroundImage=p?.avatar_src?`url("${p.avatar_src.replaceAll('"','%22')}")`:'';node.classList.toggle('has-photo',!!p?.avatar_src);}
 async function initSocial() {
+  const transition=sessionTransition,uid=session?.user.id,current=()=>sessionTransition===transition&&session?.user.id===uid;
   await loadSocial();
+  if(!current())return;
   if(socialSubscription) await db.removeChannel(socialSubscription);
-  socialSubscription=db.channel('social-'+session.user.id)
+  if(!current())return;
+  socialSubscription=db.channel('social-'+uid)
     .on('postgres_changes',{event:'*',schema:'public',table:'friendships'},()=>loadSocial().catch(e=>toast(errorText(e))))
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'conversations'},()=>loadSocial().catch(e=>toast(errorText(e))))
     .on('postgres_changes',{event:'*',schema:'public',table:'profiles'},()=>loadSocial().catch(e=>toast(errorText(e))))
@@ -820,12 +872,14 @@ async function initSocial() {
     .on('postgres_changes',{event:'*',schema:'public',table:'reactions'},()=>{if(!home&&selected?.kind==='text')refreshMessages();})
     .subscribe();
   if(presenceChannel) await db.removeChannel(presenceChannel);
-  presenceChannel=db.channel('community:main',{config:{private:true,presence:{key:session.user.id}}});
+  if(!current())return;
+  presenceChannel=db.channel('community:main',{config:{private:true,presence:{key:uid}}});
   presenceChannel.on('presence',{event:'sync'},()=>{publicVoicePresence=Object.entries(presenceChannel.presenceState()).flatMap(([id,metas])=>metas.map(meta=>({...meta,id})));online=new Set(Object.keys(presenceChannel.presenceState()));renderMembers();renderChannels();if(home)renderFriends();});
   presenceChannel.subscribe(async status=>{if(status==='SUBSCRIBED')await publishVoicePresence(true);});
 }
 const memberNodes=new Map();
 function renderMembers() {
+  if($('members-sidebar').hidden){memberNodes.clear();if($('member-list').childElementCount)$('member-list').replaceChildren();return;}
   const memberIds=new Set(communityMemberList.map(member=>member.user_id));
   if(selected?.private){memberIds.clear();memberIds.add(session.user.id);memberIds.add(selected.friend?.id);}
   const visible=people.filter(p=>memberIds.has(p.id));
@@ -842,11 +896,13 @@ function renderMembers() {
   for(const id of memberNodes.keys())if(!keep.has(id))memberNodes.delete(id);reconcileNodes($('member-list'),nodes);
   $('online-count').textContent=visible.filter(p=>online.has(p.id)).length+' online';
 }
+function readPinnedDMs(){try{const list=JSON.parse(localStorage.getItem('orbita-pinned-dms:'+session?.user.id)||'[]');return Array.isArray(list)?list:[];}catch{return [];}}
 function renderSocial() {
   $('dm-channels').replaceChildren();
   const pending=friendships.filter(f=>f.status==='pending'&&f.recipient_id===session.user.id).length;
   $('friends-badge').textContent=pending||'';
-  for(const c of conversations){const p=person(otherUser(c));const b=button('@ '+p.display_name,()=>openConversation(c),'channel'+(selected?.private&&selected.id===c.id?' active':''));b.dataset.channelId=c.id;$('dm-channels').append(b);}
+  const pinned=readPinnedDMs();
+  for(const c of [...conversations].sort((a,b)=>Number(pinned.includes(b.id))-Number(pinned.includes(a.id)))){const p=person(otherUser(c));const b=button('@ '+p.display_name,()=>openConversation(c),'channel'+(selected?.private&&selected.id===c.id?' active':''));b.dataset.channelId=c.id;const wrap=el('div','dm-pinned-row'),pin=button(pinned.includes(c.id)?'★':'☆',()=>{const next=readPinnedDMs().filter(id=>id!==c.id);if(!pinned.includes(c.id))next.unshift(c.id);localStorage.setItem('orbita-pinned-dms:'+session.user.id,JSON.stringify(next.slice(0,30)));renderSocial();},'dm-pin');pin.setAttribute('aria-label',(pinned.includes(c.id)?'Desafixar':'Fixar')+' conversa com '+p.display_name);pin.setAttribute('aria-pressed',String(pinned.includes(c.id)));wrap.append(b,pin);$('dm-channels').append(wrap);}
   enhancements?.decorateNavigation();
 }
 function showFriends() {
@@ -881,11 +937,13 @@ async function removeFriend(f){
 }
 function showProfile(p) {
   showDialog(p.display_name, container => {
-    const panel = el('div', 'rich-profile');
-    // Banner
+    const panel = el('div', 'rich-profile');panel.dataset.userId=p.id;
+    // Banner (taller, Discord-like)
     const banner = el('div', 'rp-banner');
+    banner.style.height = '160px';
     if (p.banner_src) banner.style.backgroundImage = `url("${p.banner_src.replaceAll('"','%22')}")`;
-    else if (p.avatar_color) banner.style.background = `linear-gradient(135deg, ${p.avatar_color}, #1a1528)`;
+    else if(p.id===session?.user.id&&/^#[0-9a-f]{6}$/i.test(loadProfilePrefs().bannerColor||''))banner.style.background=loadProfilePrefs().bannerColor;
+    else if (p.avatar_color) banner.style.background=`linear-gradient(135deg, ${p.avatar_color}, #2a1f3d)`;
     panel.append(banner);
     // Avatar + status
     const wrap = el('div', 'rp-avatar-wrap');
@@ -899,21 +957,38 @@ function showProfile(p) {
     const body = el('div', 'rp-body');
     const nameEl = el('h3', 'rp-name', p.display_name || 'Participante');
     body.append(nameEl);
-    body.append(el('div', 'rp-username', '@' + (p.username || 'user') + (p.pronouns ? ' · ' + p.pronouns : '')));
-    if (p.custom_status) body.append(el('div', 'rp-bio', p.custom_status));
+    const userLine = el('div', 'rp-username', '@' + (p.username || 'user') + (p.pronouns ? ' · ' + p.pronouns : ''));
+    body.append(userLine);
+    if (p.custom_status) body.append(el('div', 'rp-bio', '✦ ' + p.custom_status));
     if (p.bio) body.append(el('div', 'rp-bio', p.bio));
     if (p.presence_activity) body.append(el('div', 'rp-username', p.presence_activity));
-    // Voice section placeholder
+    // Member since
+    if (p.created_at) {
+      const since = el('div', 'rp-section');
+      since.append(el('div', 'rp-section-title', 'Membro desde'));
+      since.append(el('div', '', new Date(p.created_at).toLocaleDateString('pt-BR', {day:'numeric', month:'short', year:'numeric'})));
+      body.append(since);
+    }
+    // Voice
     const voiceSec = el('div', 'rp-section');
     voiceSec.append(el('div', 'rp-section-title', 'Em voz'));
-    voiceSec.append(el('div', '', p.id === session?.user.id && room ? 'Conectado a ' + (callChannel?.name || 'chamada') : 'Não está em chamada'));
+    voiceSec.append(el('div', '', room&&(p.id===room.localParticipant.identity||room.remoteParticipants.has(p.id))?'Conectado a '+(callChannel?.name||'chamada'):'Sem chamada visível neste servidor'));
     body.append(voiceSec);
+    body.append(button('Perguntas deste perfil',async()=>{const tools=await loadSocialTools();if(session)tools.questions(p.id);}));if(p.id!==session.user.id)body.append(button('Denunciar perfil',async()=>{const tools=await loadSocialTools();if(session)tools.report('profile',p.id);}));
+    const badgeLine=el('p','profile-badges');body.append(badgeLine);const lastSeen=el('small','muted');body.append(lastSeen);if(p.presence_status!=='invisible')checked(db.from('profile_activity').select('last_seen').eq('user_id',p.id).maybeSingle()).then(activity=>{if(activity&&lastSeen.isConnected&&!online.has(p.id))lastSeen.textContent='Visto '+relativeTime(activity.last_seen);}).catch(()=>{});const viewing=session.user.id;checked(db.rpc('profile_badges',{target:p.id})).then(badges=>{if(session?.user.id===viewing&&badgeLine.isConnected&&Array.isArray(badges))badgeLine.textContent=badges.join(' · ');}).catch(()=>{});
+    // Feed posts link
+    const feedBtn = button('Ver publicações no Feed', () => {
+      $('app-dialog').close();
+      if (feed && typeof feed.open === 'function') feed.open('profile', { author: p.id });
+      else toast('Feed não disponível');
+    }, 'rp-action');
+    body.append(feedBtn);
     // Actions
     const actions = el('div', 'rp-section');
     if (p.id === session?.user.id) {
       actions.append(button('Editar perfil', () => { $('app-dialog').close(); $('settings').click(); }, 'rp-action'));
       actions.append(button('Decorações e efeitos', () => { $('app-dialog').close(); openDecorationGallery(); }, 'rp-action'));
-      actions.append(button('Definir status', () => { $('app-dialog').close(); $('up-profile-btn').click(); }, 'rp-action'));
+      actions.append(button('Definir status', () => { $('app-dialog').close();closeMobileMenu();$('status-popover').classList.remove('hidden');requestAnimationFrame(()=>$('status-popover').querySelector('button')?.focus()); }, 'rp-action'));
     } else {
       const f = friendships.find(f => [f.requester_id, f.recipient_id].includes(p.id));
       if (f?.status === 'accepted') actions.append(button('Enviar mensagem', async () => { $('app-dialog').close(); await startConversation(p); }, 'rp-action'));
@@ -923,6 +998,7 @@ function showProfile(p) {
     body.append(actions);
     panel.append(body);
     container.append(panel);
+    setTimeout(applyDecorations, 30);
   });
 }
 async function sendFriend(p){
@@ -960,7 +1036,20 @@ function incomingCall(event){
 $('decline-call').onclick=()=>{$('incoming-call').hidden=true;};
 $('friends-nav').onclick=showFriends;
 $('settings').onclick=()=>showDialog('Seu perfil e áudio',container=>{
-  const form=el('form');const name=inputField(form,'Nome de exibição',profile.display_name,50),username=inputField(form,'Nome de usuário (3–24 letras, números ou _)',profile.username,24),bio=inputField(form,'Sobre você',profile.bio,160),pronouns=inputField(form,'Pronomes',profile.pronouns,32),activity=inputField(form,'Atividade (ex.: Jogando Minecraft / Ouvindo música)',profile.presence_activity,80),color=inputField(form,'Cor do perfil',profile.avatar_color,7);color.type='color';
+  const card = el('div', 'profile-edit-card');
+  const bannerPrev = el('div', 'rp-banner-preview');
+  if (profile.banner_src) bannerPrev.style.backgroundImage = `url("${profile.banner_src.replaceAll('"','%22')}")`;
+  else if (/^#[0-9a-f]{6}$/i.test(loadProfilePrefs().bannerColor||'')) bannerPrev.style.background = loadProfilePrefs().bannerColor;
+  else if (profile.avatar_color) bannerPrev.style.background = `linear-gradient(135deg, ${profile.avatar_color}, #2a1f3d)`;
+  card.append(bannerPrev);
+  const wrap = el('div', 'rp-avatar-wrap');
+  const av = el('div', 'rp-avatar');
+  setAvatar(av, profile);
+  wrap.append(av);
+  card.append(wrap);
+  const form=el('form');
+  const name=inputField(form,'Nickname (também será seu @)',/^[A-Za-z0-9_]{3,24}$/.test(profile.display_name)?profile.display_name:profile.username,24),bio=inputField(form,'Sobre você',profile.bio,160),pronouns=inputField(form,'Pronomes',profile.pronouns,32),activity=inputField(form,'Atividade (ex.: Jogando Minecraft / Ouvindo música)',profile.presence_activity,80),color=inputField(form,'Cor do perfil',profile.avatar_color,7);color.type='color';
+  name.pattern='[A-Za-z0-9_]{3,24}';name.minLength=3;name.required=true;const nicknameHint=el('p','muted');name.closest('label').after(nicknameHint);const hint=()=>nicknameHint.textContent='Para adicionar você: @'+name.value.trim().toLowerCase()+' · 3–24 letras, números ou _';name.addEventListener('input',hint);hint();
   const avatarFile=profileFileField(form,'Foto do perfil',profile.avatar_src),bannerFile=profileFileField(form,'Banner (pode ser GIF animado)',profile.banner_src);
   form.append(el('h3','','Áudio'));
   form.append(el('p','muted','Ajustes aplicados ao microfone. O navegador e o dispositivo podem limitar o efeito real.'));
@@ -970,19 +1059,19 @@ $('settings').onclick=()=>showDialog('Seu perfil e áudio',container=>{
   const agcLabel=el('label','check-field');const agcCheck=el('input');agcCheck.type='checkbox';agcCheck.checked=autoGainControl;agcLabel.append(agcCheck,document.createTextNode('Controle automático de ganho'));form.append(agcLabel,el('p','muted','Mantém o volume da sua voz mais estável.'));
 
   const pttLabel=el('label','check-field'),ptt=el('input');ptt.type='checkbox';ptt.checked=pushToTalk;pttLabel.append(ptt,document.createTextNode('Pressionar Espaço ou Segurar para falar'));form.append(pttLabel,el('p','muted','Com esta opção ativa, o microfone fica fechado até você segurar o botão Falar ou a tecla Espaço na chamada.'));
-  const save=el('button','primary','Salvar alterações');save.type='submit';form.append(save);container.append(form);
+  const save=el('button','primary','Salvar alterações');save.type='submit';form.append(save);card.append(form); container.append(card);
   form.onsubmit=async event=>{event.preventDefault();save.disabled=true;const uid=session.user.id,prior={...profile},created=[];let saved=false;try{
     const avatarUrl=avatarFile.files[0]?await uploadProfileAsset(avatarFile.files[0],'avatar'):prior.avatar_url||'';if(avatarUrl!==prior.avatar_url)created.push(avatarUrl);
     const bannerUrl=bannerFile.files[0]?await uploadProfileAsset(bannerFile.files[0],'banner'):prior.banner_url||'';if(bannerUrl!==prior.banner_url)created.push(bannerUrl);
     if(session?.user.id!==uid)throw Error('Sua conta mudou; salve o perfil novamente.');
-    const updated=await checked(db.from('profiles').update({display_name:name.value.trim(),username:username.value.trim().toLowerCase(),bio:bio.value.trim(),pronouns:pronouns.value.trim(),presence_activity:activity.value.trim(),avatar_color:color.value,avatar_url:avatarUrl,banner_url:bannerUrl}).eq('id',uid).select('id'));
+    const updated=await checked(db.from('profiles').update({display_name:name.value.trim(),username:name.value.trim().toLowerCase(),bio:bio.value.trim(),pronouns:pronouns.value.trim(),presence_activity:activity.value.trim(),avatar_color:color.value,avatar_url:avatarUrl,banner_url:bannerUrl}).eq('id',uid).select('id'));
     if(!updated.length)throw Error('O perfil não pôde ser atualizado. Entre novamente.');saved=true;
     const retired=[prior.avatar_url,prior.banner_url].filter(path=>path?.startsWith('profiles/'+uid+'/')&&!new Set([avatarUrl,bannerUrl]).has(path));if(retired.length){const removed=await db.storage.from('orbita-files').remove([...new Set(retired)]);if(removed.error)toast('Perfil salvo. Não foi possível liberar o espaço das imagens antigas agora.');}
     noise=noiseCheck.checked;localStorage.setItem('orbita-noise',String(noise));
     echoCancellation=echoCheck.checked;localStorage.setItem('orbita-echo',String(echoCancellation));
     autoGainControl=agcCheck.checked;localStorage.setItem('orbita-agc',String(autoGainControl));
     pushToTalk=ptt.checked;localStorage.setItem('orbita-push-to-talk',String(pushToTalk));
-    if(room){for(const pub of room.localParticipant.audioTrackPublications.values())if(pub.track?.source==='microphone')await pub.track.restartTrack(audioCapture());talkHeld=false;if(pushToTalk||deafened)await microphoneSwitch.set(room.localParticipant,false);}
+    if(room){for(const pub of room.localParticipant.audioTrackPublications.values())if(pub.track?.source==='microphone')await pub.track.restartTrack(audioCapture());await audioTools?.sync(room);talkHeld=false;if(pushToTalk||deafened)await microphoneSwitch.set(room.localParticipant,false);}
     await loadSocial();if(form.isConnected)$('app-dialog').close();toast('Perfil e áudio atualizados.');
   }catch(e){if(!saved&&created.length)await db.storage.from('orbita-files').remove(created.filter(Boolean));toast(e.code==='23505'?'Esse nome de usuário já está em uso.':errorText(e));}finally{save.disabled=false;}};
 });
@@ -1122,16 +1211,21 @@ async function resolveAttachmentUrl(attachment){
 
 const baseInitSocial=initSocial;
 initSocial=async()=>{
+  const transition=sessionTransition,uid=session?.user.id,current=()=>sessionTransition===transition&&session?.user.id===uid;
   await checked(db.rpc('ensure_default_community'));
+  if(!current())return;
   const params=new URLSearchParams(location.search),invite=params.get('invite')||localStorage.getItem('orbita-pending-invite');
-  if(invite){try{const {data,error}=await db.rpc('join_community_invite',{invitation:invite});if(error)throw error;activeCommunity=data;localStorage.removeItem('orbita-pending-invite');params.delete('invite');history.replaceState(null,'',location.pathname+(params.size?'?'+params:'')+location.hash);toast('Você entrou na comunidade pelo convite.');}catch(error){localStorage.setItem('orbita-pending-invite',invite);toast(errorText(error));}}
-  [communities,siteRoles]=await Promise.all([checked(db.from('communities').select('*').order('created_at')),checked(db.from('site_roles').select('*'))]);
-  if(!communities.some(c=>c.id===activeCommunity))activeCommunity=await checked(db.rpc('ensure_default_community'));
-  await baseInitSocial();renderCommunityRail();updateFounders();
+  if(invite){try{const {data,error}=await db.rpc('join_community_invite',{invitation:invite});if(!current())return;if(error)throw error;activeCommunity=data;localStorage.removeItem('orbita-pending-invite');params.delete('invite');history.replaceState(null,'',location.pathname+(params.size?'?'+params:'')+location.hash);toast('Você entrou na comunidade pelo convite.');}catch(error){localStorage.setItem('orbita-pending-invite',invite);toast(errorText(error));}}
+  const loaded=await Promise.all([checked(db.from('communities').select('*').order('created_at')),checked(db.from('site_roles').select('*'))]);
+  if(!current())return;[communities,siteRoles]=loaded;
+  if(!communities.some(c=>c.id===activeCommunity)){const fallback=await checked(db.rpc('ensure_default_community'));if(!current())return;activeCommunity=fallback;}
+  if(!current())return;await baseInitSocial();if(!current())return;renderCommunityRail();updateFounders();
   if(extraSubscription)await db.removeChannel(extraSubscription);
+  if(!current())return;
   extraSubscription=db.channel('orbita-ui-'+session.user.id)
-    .on('postgres_changes',{event:'*',schema:'public',table:'communities'},async()=>{communities=await checked(db.from('communities').select('*').order('created_at'));renderCommunityRail();})
-    .on('postgres_changes',{event:'*',schema:'public',table:'site_roles'},async()=>{siteRoles=await checked(db.from('site_roles').select('*'));renderMembers();updateFounders();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'communities'},async()=>{try{const loaded=await checked(db.from('communities').select('*').order('created_at'));if(!current())return;communities=loaded;renderCommunityRail();}catch(error){if(current())toast(errorText(error));}})
+    .on('postgres_changes',{event:'*',schema:'public',table:'community_welcome'},payload=>{const id=payload.new?.community_id||payload.old?.community_id;welcomeAccess.delete(id);communityViews.delete(id);if(current()&&id===activeCommunity)ensureCommunityWelcome(id).then(accepted=>{if(!current())return;if(!accepted){if(callChannel?.community_id===id)leaveCall();showFriends();}else scheduleAccessRefresh();}).catch(error=>toast(errorText(error)));})
+    .on('postgres_changes',{event:'*',schema:'public',table:'site_roles'},async()=>{try{const loaded=await checked(db.from('site_roles').select('*'));if(!current())return;siteRoles=loaded;renderMembers();updateFounders();}catch(error){if(current())toast(errorText(error));}})
     .on('postgres_changes',{event:'*',schema:'public',table:'poll_votes'},()=>{if(!home&&selected?.kind==='text')refreshMessages();}).subscribe();
   if(new URLSearchParams(location.hash.slice(1)).has('convite'))toast('Entre na conta de Kalil e abra Configurações → Aceitar convite de criador.');
   $('banner-title').textContent='Sua comunidade';
@@ -1157,6 +1251,7 @@ async function refreshCommunity(c,intent){
   else{const updated=found.find(ch=>ch.id===selected?.id);if(updated)Object.assign(selected,updated);renderChannels();renderMembers();$('message-form').hidden=!!selected?.is_announcement&&!hasCommunityPermission('manage_messages');rememberCommunity();}
 }
 async function openCommunity(c){
+  if(!await ensureCommunityWelcome(c.id))return;
   const intent=++navigationEpoch;saveComposerDraft();saveConversation();rememberCommunity();
   const cached=communityViews.get(c.id);
   if(cached&&cached.expires>Date.now()&&cached.channels.length){
@@ -1175,7 +1270,7 @@ async function openCommunity(c){
 }
 const baseSelect=selectChannel;
 selectChannel=async channel=>{
-  const intent=++navigationEpoch;
+  const intent=++navigationEpoch;if(channel.community_id&&!await ensureCommunityWelcome(channel.community_id)){showFriends();return;}if(intent!==navigationEpoch)return;
   if(channel.community_id&&activeCommunity!==channel.community_id){activeCommunity=channel.community_id;if(!await loadCommunityAccess())return;}
   if(intent!==navigationEpoch||channel.community_id&&activeCommunity!==channel.community_id)return;
   replyTarget=null;$('reply-banner').classList.add('hidden');
@@ -1251,23 +1346,8 @@ $('dd-invite-btn').onclick=()=>copyInvitation().catch(e=>toast(errorText(e)));
 $('dm-quick-find').onclick=()=>showDialog('Busca rápida',container=>{const form=el('form'),input=inputField(form,'Canal ou @ de um amigo','',60),go=el('button','primary','Abrir');go.type='submit';form.append(go);container.append(form);form.onsubmit=async e=>{e.preventDefault();try{const text=input.value.trim().replace(/^[@#]/,'').toLowerCase(),ch=channels.find(c=>c.name.toLowerCase()===text),p=people.find(p=>p.username===text||p.display_name.toLowerCase()===text);if(ch){$('app-dialog').close();await selectChannel(ch);}else if(p){$('app-dialog').close();await startConversation(p);}else toast('Nenhum canal ou usuário encontrado.');}catch(error){toast(errorText(error));}};});
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('dm-quick-find').click();}});
 $('btn-search-toggle').onclick=()=>$('search-messages').focus();
-// Members panel toggle with persistence
-const MEMBERS_KEY = 'orbita-members-hidden';
-function applyMembersState() {
-  const hidden = localStorage.getItem(MEMBERS_KEY) === 'true';
-  const mobile = matchMedia('(max-width:1080px)').matches;
-  document.body.classList.toggle('members-hidden', hidden && !mobile);
-  document.body.classList.toggle('members-open', !hidden && mobile);
-  $('btn-members-toggle').classList.toggle('active', !hidden);
-  $('btn-members-toggle').title = hidden ? 'Mostrar membros' : 'Ocultar membros';
-}
-applyMembersState();
-$('btn-members-toggle').onclick = () => {
-  const currentlyHidden = document.body.classList.contains('members-hidden') || (matchMedia('(max-width:1080px)').matches && !document.body.classList.contains('members-open'));
-  const nextHidden = !currentlyHidden;
-  localStorage.setItem(MEMBERS_KEY, String(nextHidden));
-  applyMembersState();
-};
+// The right member column has been removed; profiles remain available in chat and calls.
+document.body.classList.add('members-hidden');document.body.classList.remove('members-open');$('members-sidebar').hidden=true;$('btn-members-toggle').hidden=true;$('btn-members-toggle').onclick=null;
   $('mobile-menu-btn').onclick=()=>{const open=document.body.classList.toggle('mobile-menu-open');$('mobile-menu-btn').setAttribute('aria-expanded',String(open));};
 document.addEventListener('click',event=>{if(!document.body.classList.contains('mobile-menu-open'))return;const target=event.target;if(!(target instanceof Element)||!target.closest('.sidebar,.rail,#mobile-menu-btn,.mobile-nav-btn'))closeMobileMenu();});
 for(const view of ['friends-view','voice-view']){const target=$(view).querySelector('.chat-title');const menu=button('☰',()=>{const open=document.body.classList.toggle('mobile-menu-open');menu.setAttribute('aria-expanded',String(open));},'mobile-nav-btn');menu.setAttribute('aria-label','Menu de canais');menu.setAttribute('aria-expanded','false');target.prepend(menu);}
@@ -1283,7 +1363,8 @@ const baseLoadSocial=loadSocial;loadSocial=async()=>{await baseLoadSocial();upda
 const baseSettings=$('settings').onclick;
 $('settings').onclick=()=>{
   baseSettings();const container=$('dialog-content'),appearance=el('div');
-  const themeLabel=el('label','field','Tema'),theme=el('select');for(const [key,label]of[['orbita','Violeta Órbita'],['blurple','Blurple'],['emerald','Emerald'],['nitro','Pink']]){const option=el('option','',label);option.value=key;theme.append(option);}theme.value=localStorage.getItem('orbita-theme')||'orbita';themeLabel.append(theme);appearance.append(themeLabel);
+  loadExtraThemes().catch(error=>toast(errorText(error)));
+  const themeLabel=el('label','field','Tema'),theme=el('select');for(const [key,label]of[['orbita','Violeta Órbita'],['blurple','Blurple'],['emerald','Emerald'],['nitro','Pink'],['cyber','Cyber Neon'],['forest','Floresta'],['ocean','Oceano'],['sunset','Pôr do Sol'],['midnight','Meia-Noite'],['blood','Sangue'],['gold','Ouro'],['sakura','Sakura']]){const option=el('option','',label);option.value=key;theme.append(option);}theme.value=localStorage.getItem('orbita-theme')||'orbita';theme.setAttribute('aria-label','Tema');themeLabel.append(theme);appearance.append(themeLabel);
   const densityLabel=el('label','field','Densidade'),density=el('select');for(const value of ['cozy','compact']){const option=el('option','',value==='cozy'?'Confortável':'Compacta');option.value=value;density.append(option);}density.value=localStorage.getItem('orbita-density')||'cozy';densityLabel.append(density);appearance.append(densityLabel);
   for(const [input,key]of[[theme,'theme'],[density,'density']])input.onchange=()=>{localStorage.setItem('orbita-'+key,input.value);document.body.dataset[key]=input.value;};
   container.append(appearance,button('Aceitar convite de criador',()=>showCreatorInvite()),button('Sobre esta versão',()=>openCloud()));
@@ -1309,13 +1390,13 @@ $('dd-boost-btn').onclick=openCloud;$('banner-action-btn').onclick=openCloud;$('
 $('up-mic-btn').onclick=()=>$('mic').click();$('up-deafen-btn').onclick=()=>$('deafen').click();$('vb-mic').onclick=()=>$('mic').click();$('vb-video').onclick=()=>$('camera').click();$('dock-name').onclick=()=>{if(callChannel)selectChannel(callChannel);};
 $('back-to-call').onclick=()=>{if(selected?.private){const c=conversations.find(c=>c.id===selected.id);if(c)openConversation(c);}else{const c=channels.find(c=>c.community_id===activeCommunity&&c.kind==='text');if(c)selectChannel(c);}};
 $('connection-info').onclick=()=>showDialog('Conexão da chamada',container=>{container.append(el('p','',room?'Estado: '+room.state:'Você ainda não está em uma chamada.'));if(room){container.append(el('p','','Qualidade local: '+room.localParticipant.connectionQuality));for(const p of room.remoteParticipants.values())container.append(el('p','',(p.name||'Participante')+' · '+p.connectionQuality));}container.append(el('p','muted',`Vídeo adaptativo: perfil ${mediaSettings().mode}. O navegador ajusta a recepção à rede; áudio da tela só é liberado em abas e navegadores compatíveis.`));});
-let lastReaction=0;
-$('vc-react-call').onclick=async()=>{if(!room||Date.now()-lastReaction<2000)return;lastReaction=Date.now();try{await room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({type:'reaction',emoji:'🎉'})),{reliable:true,topic:'orbita-reaction'});toast('Você · 🎉');}catch(e){toast(errorText(e));}};
-function receiveCallData(payload,participant,_kind,topic){if(callTranscription&&['orbita-call-transcript','orbita-call-chat','orbita-luladroid-resp'].includes(topic)){callTranscription.receiveData(payload,participant,topic);return;}if(topic!=='orbita-reaction'||payload.length>200)return;try{const data=JSON.parse(new TextDecoder().decode(payload));if(data.type==='reaction'&&['🎉','❤️','👍','😂'].includes(data.emoji))toast((participant?.name||'Participante')+' · '+data.emoji);}catch{}}
+function receiveCallData(...args){callReactions?.receive(...args);lulaController?.receive(...args);}
 const screenLabel=el('label','screen-option'),screenCheck=el('input');screenCheck.type='checkbox';screenCheck.id='share-screen-audio';screenCheck.checked=localStorage.getItem('orbita-screen-audio')!=='false';screenLabel.append(screenCheck,document.createTextNode('Incluir áudio da tela (autorize também na janela do navegador)'));$('active-controls').before(screenLabel);
 function updateScreenAudio(){localStorage.setItem('orbita-screen-audio',String(screenCheck.checked));}
 screenCheck.onchange=updateScreenAudio;updateScreenAudio();
 $('btn-notif-toggle').onclick=async()=>{if(!('Notification'in window))return toast('Este navegador não oferece notificações.');const permission=await Notification.requestPermission();toast(permission==='granted'?'Notificações ativadas neste navegador.':'Notificações não autorizadas.');};
+function loadExtraThemes(){return loadStyle('/static/themes.css');}
+if((localStorage.getItem('orbita-theme')||'orbita')!=='orbita')loadExtraThemes().catch(error=>toast(errorText(error)));
 document.body.dataset.theme=localStorage.getItem('orbita-theme')||'orbita';document.body.dataset.density=localStorage.getItem('orbita-density')||'cozy';
 window.addEventListener('pagehide',()=>{if(extraSubscription)db?.removeChannel(extraSubscription);});
 
@@ -1402,7 +1483,7 @@ renderChannels=()=>{initialRenderChannels();for(const node of channelNodes.value
 const priorCallUpdate=updateCallUI;
 updateCallUI=()=>{if(!room)talkHeld=false;priorCallUpdate();if(pttButton){const active=!!room&&callChannel?.id===selected?.id&&selected?.kind==='voice';pttButton.hidden=!active||!pushToTalk;pttButton.textContent=talkHeld?'Falando…':'Segure para falar';pttButton.setAttribute('aria-pressed',String(talkHeld));}};
 
-enhancements=initEnhancements({
+enhancements=initEnhancements({clearDrafts:()=>{drafts.erase();if(selected?.kind==='text')$('message-input').value='';},
   state:()=>({db,config,session,selected,messages,room,callChannel,profile,people,channels,conversations,communities,activeCommunity,home,deafened,communityMemberList}),
   el,button,toast,checked,showDialog,inputField,errorText,apiFetch,insertText:insertComposer,
   get messageFields(){return messageFields;},
@@ -1430,7 +1511,7 @@ $('file-input').multiple=true;
 $('file-input').onchange=async()=>{const files=[...$('file-input').files];await enhancements.sendFiles(files);$('file-input').value='';$('file-input').accept='';};
 const updateBeforeDeviceControls=updateCallUI;
 updateCallUI=()=>{updateBeforeDeviceControls();updateCameraControl();};
-callLayout=initCallLayout({
+callLayout=initCallLayout({audioSettings:()=>audioTools?.open(),soundSettings:box=>enhancements?.soundFields(box),
   state:()=>({room,selected,callChannel,deafened}),report:error=>toast(errorText(error)),toast,button,dialog:showDialog,
   paragraph:text=>el('p','muted',text),invite:()=>{if(selected?.private)showDialog('Chamada privada',box=>box.append(el('p','','Esta conversa é privada. Abra Amigos para iniciar uma chamada com outra pessoa.'),button('Abrir Amigos',()=>{$('app-dialog').close();showFriends();})));else showCommunityInvite();},
   avatar:(node,id)=>{const p=person(id);if(p.display_name==='Participante'){p.display_name=node.parentElement.querySelector('.participant-name')?.textContent||p.display_name;}setAvatar(node,p);},
@@ -1443,63 +1524,48 @@ callLayout=initCallLayout({
 });
 const updateBeforeCallLayout=updateCallUI;
 updateCallUI=()=>{updateBeforeCallLayout();callLayout.update();};
-callTranscription=initCallTranscription({
-  state:()=>({db,config,session,selected,room,callChannel,profile,deafened}),
-  toast,el,button,apiFetch
-});
-feed=initSocialFeed({
+const feedContext={
   state:()=>({db,session,profile,moderator:siteRoles.some(role=>role.user_id===session?.user.id&&['creator','admin'].includes(role.role))}),
-  el,toast,checked,showDialog,
+  el,toast,checked,showDialog,tools:async action=>{const tools=await loadSocialTools();if(session)tools[action]();},sharePost:post=>sharePostToConversation(post),questions:async id=>{const tools=await loadSocialTools();if(session)tools.questions(id);},
   profile:p=>p.id===session?.user.id?$('settings').click():showProfile(person(p.id)||p),
   open:()=>{navigationEpoch++;saveComposerDraft();saveConversation();stopConversation();generation++;home=true;selected=null;
     for(const id of ['text-view','voice-view','friends-view'])$(id).hidden=true;
     renderChannels();renderSocial();updateCallUI();enhancements.channelChanged().catch(()=>{});},
   menu:()=>{document.body.classList.add('mobile-menu-open');document.querySelectorAll('.mobile-nav-btn').forEach(node=>node.setAttribute('aria-expanded','true'));},
-  closeMenu:closeMobileMenu
-});
+  closeMenu:closeMobileMenu,
+  rooms:()=>channels.filter(c=>c.kind==='voice'&&!c.is_private).map(c=>({...c,participants:publicVoicePresence.filter(p=>p.channel_id===c.id).length})),
+  joinRoom:async channel=>{await selectChannel(channel);$('join-call').click();}
+};
+let feedInstance,feedTask,feedNavigation=0;
+const feedNav=el('button','server-icon action-rail','◈');feedNav.id='feed-nav';feedNav.title='Feed da Órbita';feedNav.setAttribute('aria-label',feedNav.title);$('friends-nav').after(feedNav);
+async function loadFeed(){if(feedInstance)return feedInstance;if(!feedTask)feedTask=Promise.all([import('./social-feed.js'),loadStyle('/static/social-feed.css')]).then(([module])=>feedInstance=module.initSocialFeed(feedContext)).catch(error=>{feedTask=null;throw error;});return feedTask;}
+feed={open:async(...args)=>{const uid=session?.user.id,epoch=++feedNavigation;try{const instance=await loadFeed();if(uid===session?.user.id&&epoch===feedNavigation)return instance.open(...args);}catch(error){toast(errorText(error));}},hide:()=>{feedNavigation++;feedInstance?.hide();},sessionChanged:()=>{feedNavigation++;feedInstance?.sessionChanged();},deepLink:()=>{if(new URL(location.href).searchParams.has('post'))loadFeed().then(instance=>instance.deepLink()).catch(error=>toast(errorText(error)));}};
+feedNav.onclick=()=>feed.open();
+
 boot();
 
 
 // === Profile customization (Discord-like) ===
 const PROFILE_PREFS_KEY = 'orbita-profile-prefs';
 function loadProfilePrefs() {
-  try { return JSON.parse(localStorage.getItem(PROFILE_PREFS_KEY) || '{}'); }
+  try { return JSON.parse(localStorage.getItem(PROFILE_PREFS_KEY+':'+(session?.user.id||'guest')) || '{}') || {}; }
   catch { return {}; }
 }
 function saveProfilePrefs(prefs) {
-  localStorage.setItem(PROFILE_PREFS_KEY, JSON.stringify(prefs));
+  localStorage.setItem(PROFILE_PREFS_KEY+':'+(session?.user.id||'guest'), JSON.stringify(prefs));
   applyProfileStyles();
 }
 function applyProfileStyles() {
   const prefs = loadProfilePrefs();
-  document.querySelectorAll('.message-meta strong, .up-name, .participant-name, .member-name').forEach(el => {
+  document.querySelectorAll('.message-meta strong, .up-name, .participant-name, .member-name, .member strong, .rp-name').forEach(el => {
     el.classList.remove('name-font-inter','name-font-mono','name-font-serif','name-font-display','name-effect-glow','name-effect-shimmer','name-effect-rainbow');
-    if (prefs.font) el.classList.add('name-font-' + prefs.font);
-    if (prefs.effect) el.classList.add('name-effect-' + prefs.effect);
+    const card=el.closest('[data-user-id],[data-participant-id],[data-message-id]');
+    const owner=el.classList.contains('up-name') || card?.dataset.userId===session?.user.id || card?.dataset.participantId===session?.user.id || messages.get(card?.dataset.messageId)?.author_id===session?.user.id;
+    if(owner && ['inter','mono','serif','display'].includes(prefs.font)) el.classList.add('name-font-'+prefs.font);
+    if(owner && ['glow','shimmer','rainbow'].includes(prefs.effect)) el.classList.add('name-effect-'+prefs.effect);
   });
 }
-function openProfileCustomizer() {
-  showDialog('Personalizar perfil', container => {
-    const prefs = loadProfilePrefs();
-    const font = el('select');
-    font.innerHTML = '<option value="">Padrão</option><option value="inter">Inter</option><option value="mono">Monospace</option><option value="serif">Serif</option><option value="display">Display</option>';
-    font.value = prefs.font || '';
-    const effect = el('select');
-    effect.innerHTML = '<option value="">Nenhum</option><option value="glow">Glow</option><option value="shimmer">Shimmer</option><option value="rainbow">Rainbow</option>';
-    effect.value = prefs.effect || '';
-    const bannerColor = el('input'); bannerColor.type = 'color'; bannerColor.value = prefs.bannerColor || '#7c5cff';
-    const fontLabel = el('label','field','Fonte do nome'); fontLabel.append(font);
-    const effectLabel = el('label','field','Efeito do nome'); effectLabel.append(effect);
-    const colorLabel = el('label','field','Cor da capa'); colorLabel.append(bannerColor);
-    container.append(fontLabel, effectLabel, colorLabel,
-      button('Salvar', () => {
-        saveProfilePrefs({ font: font.value, effect: effect.value, bannerColor: bannerColor.value });
-        $('app-dialog').close();
-        toast('Personalização salva.');
-      }, 'primary')
-    );
-  });
-}
+function openProfileCustomizer(){return openProfileAppearance('openProfileCustomizer');}
 // Hook into settings if available
 const originalSettingsClick = $('settings')?.onclick;
 if ($('settings')) {
@@ -1520,15 +1586,15 @@ applyProfileStyles();
 // === Server / community theme ===
 const SERVER_THEME_KEY = 'orbita-server-theme';
 function loadServerTheme() {
-  try { return JSON.parse(localStorage.getItem(SERVER_THEME_KEY) || '{}'); }
+  try { return JSON.parse(localStorage.getItem(SERVER_THEME_KEY+':'+(session?.user.id||'guest')+':'+activeCommunity) || '{}') || {}; }
   catch { return {}; }
 }
 function applyServerTheme() {
-  const t = loadServerTheme();
+  const t = !home&&session ? loadServerTheme() : {};
   const root = document.documentElement;
-  if (t.accent) root.style.setProperty('--accent', t.accent);
-  if (t.bg) root.style.setProperty('--bg-main', t.bg);
-  document.body.classList.toggle('has-server-banner', !!t.banner);
+  for(const [key,value] of [['--accent',t.accent],['--bg-main',t.bg]]){if(/^#[0-9a-f]{6}$/i.test(value||''))root.style.setProperty(key,value);else root.style.removeProperty(key);}
+  const banner=$('server-banner-box');let url;try{url=new URL(t.banner);if(url.protocol!=='https:')url=null;}catch{}
+  banner.style.backgroundImage=url?'linear-gradient(#0003,#0007),url('+JSON.stringify(url.href)+')':'';banner.style.backgroundSize='cover';banner.style.backgroundPosition='center';
 }
 function openServerSettings() {
   showDialog('Configurações do servidor', container => {
@@ -1542,7 +1608,8 @@ function openServerSettings() {
       (()=>{const l=el('label','field','Fundo principal');l.append(bg);return l;})(),
       (()=>{const l=el('label','field','Banner (URL)');l.append(banner);return l;})(),
       button('Aplicar', () => {
-        localStorage.setItem(SERVER_THEME_KEY, JSON.stringify({ accent: accent.value, bg: bg.value, banner: banner.value }));
+        if(banner.value.trim()){let parsed;try{parsed=new URL(banner.value.trim());}catch{}if(!parsed||parsed.protocol!=='https:')throw Error('Use um endereço HTTPS válido para o banner.');}
+        localStorage.setItem(SERVER_THEME_KEY+':'+(session?.user.id||'guest')+':'+activeCommunity, JSON.stringify({ accent: accent.value, bg: bg.value, banner: banner.value }));
         applyServerTheme();
         $('app-dialog').close();
         toast('Tema do servidor aplicado.');
@@ -1562,108 +1629,171 @@ setTimeout(() => {
 }, 2000);
 applyServerTheme();
 
+let preferencesFrame;
+const preferencesObserver=new MutationObserver(()=>{if(preferencesFrame)return;preferencesFrame=requestAnimationFrame(()=>{preferencesFrame=null;applyProfileStyles();applyServerTheme();applyDecorations();});});
+preferencesObserver.observe($('app-view'),{childList:true,subtree:true,attributes:true,attributeFilter:['hidden']});
+
 // === Profile decorations gallery (Discord-shop style) ===
-const DECORATIONS = [
-  { id: 'none', name: 'Nenhum', type: 'frame', css: '', theme: 'Básico' },
-  { id: 'pearls', name: 'Pérolas de Arco-Íris', type: 'frame', css: 'avatar-frame-pearls', theme: 'Sereia' },
-  { id: 'eye', name: 'Olho Encantado', type: 'frame', css: 'avatar-frame-eye', theme: 'Folclore' },
-  { id: 'heart', name: 'Coração', type: 'frame', css: 'avatar-frame-heart', theme: 'Romance' },
-  { id: 'gold', name: 'Ouro', type: 'frame', css: 'avatar-frame-gold', theme: 'Luxo' },
-  { id: 'glow', name: 'Brilho', type: 'frame', css: 'avatar-frame-glow', theme: 'Básico' },
-  { id: 'fire', name: 'Chamas', type: 'frame', css: 'avatar-frame-fire', theme: 'Fogo' },
-  { id: 'ice', name: 'Gelo', type: 'frame', css: 'avatar-frame-ice', theme: 'Inverno' },
-  { id: 'neon', name: 'Neon', type: 'frame', css: 'avatar-frame-neon', theme: 'Cyber' },
-  { id: 'moon', name: 'Lua', type: 'frame', css: 'avatar-frame-moon', theme: 'Noturno' },
-  { id: 'sakura', name: 'Sakura', type: 'frame', css: 'avatar-frame-sakura', theme: 'Japão' },
-  { id: 'cyber', name: 'Cyber', type: 'frame', css: 'avatar-frame-cyber', theme: 'Cyber' },
-  { id: 'forest', name: 'Floresta', type: 'frame', css: 'avatar-frame-forest', theme: 'Natureza' },
-  { id: 'ocean', name: 'Oceano', type: 'frame', css: 'avatar-frame-ocean', theme: 'Sereia' },
-  { id: 'sunset', name: 'Pôr do Sol', type: 'frame', css: 'avatar-frame-sunset', theme: 'Natureza' },
-  { id: 'galaxy', name: 'Galáxia', type: 'frame', css: 'avatar-frame-galaxy', theme: 'Espaço' },
-  { id: 'ghost', name: 'Fantasma', type: 'frame', css: 'avatar-frame-ghost', theme: 'Terror' },
-  { id: 'vampire', name: 'Vampiro', type: 'frame', css: 'avatar-frame-vampire', theme: 'Terror' },
-  { id: 'angel', name: 'Anjo', type: 'frame', css: 'avatar-frame-angel', theme: 'Divino' },
-  { id: 'demon', name: 'Demônio', type: 'frame', css: 'avatar-frame-demon', theme: 'Terror' },
-  { id: 'rainbow', name: 'Arco-Íris', type: 'frame', css: 'avatar-frame-rainbow', theme: 'Colorido' },
-  { id: 'bubbles', name: 'Bolhas', type: 'effect', css: 'profile-effect-bubbles', theme: 'Sereia' },
-  { id: 'sparkles', name: 'Brilhos', type: 'effect', css: 'profile-effect-sparkles', theme: 'Mágico' },
-  { id: 'firefx', name: 'Efeito Fogo', type: 'effect', css: 'profile-effect-fire', theme: 'Fogo' },
-  { id: 'stars', name: 'Estrelas', type: 'effect', css: 'profile-effect-stars', theme: 'Espaço' },
-  { id: 'aurora', name: 'Aurora', type: 'effect', css: 'profile-effect-aurora', theme: 'Natureza' },
-  { id: 'rain', name: 'Chuva', type: 'effect', css: 'profile-effect-rain', theme: 'Clima' },
-  { id: 'gothic', name: 'Gótico', type: 'frame', css: 'avatar-frame-gothic', theme: 'Gótico' },
-  { id: 'cyberpunk', name: 'Cyberpunk', type: 'frame', css: 'avatar-frame-cyberpunk', theme: 'Cyberpunk' },
-  { id: 'halloween', name: 'Halloween', type: 'frame', css: 'avatar-frame-halloween', theme: 'Halloween' },
-  { id: 'christmas', name: 'Natal', type: 'frame', css: 'avatar-frame-christmas', theme: 'Natal' },
-  { id: 'buddhist', name: 'Budista', type: 'frame', css: 'avatar-frame-buddhist', theme: 'Espiritual' },
-  { id: 'christian', name: 'Cristão', type: 'frame', css: 'avatar-frame-christian', theme: 'Espiritual' },
-  { id: 'samurai', name: 'Samurai', type: 'frame', css: 'avatar-frame-samurai', theme: 'Japão' },
-  { id: 'steampunk', name: 'Steampunk', type: 'frame', css: 'avatar-frame-steampunk', theme: 'Steampunk' },
-  { id: 'pastel', name: 'Pastel', type: 'frame', css: 'avatar-frame-pastel', theme: 'Suave' },
-  { id: 'void', name: 'Vazio', type: 'frame', css: 'avatar-frame-void', theme: 'Gótico' },
-  { id: 'cherry', name: 'Cereja', type: 'frame', css: 'avatar-frame-cherry', theme: 'Japão' },
-  { id: 'lotus', name: 'Lótus', type: 'frame', css: 'avatar-frame-lotus', theme: 'Espiritual' },
-  { id: 'gothicfx', name: 'Aura Gótica', type: 'effect', css: 'profile-effect-gothic', theme: 'Gótico' },
-  { id: 'halloweenfx', name: 'Abóbora', type: 'effect', css: 'profile-effect-halloween', theme: 'Halloween' },
-  { id: 'snow', name: 'Neve', type: 'effect', css: 'profile-effect-snow', theme: 'Natal' },
-  { id: 'sacred', name: 'Sagrado', type: 'effect', css: 'profile-effect-sacred', theme: 'Espiritual' },
-];
+
 
 function applyDecorations() {
   const prefs = loadProfilePrefs();
   document.querySelectorAll('.rp-avatar, .up-avatar, .avatar').forEach(av => {
-    DECORATIONS.filter(d => d.type === 'frame').forEach(d => av.classList.remove(d.css));
-    if (prefs.frame) {
+    DECORATIONS.filter(d => d.type === 'frame'&&d.css).forEach(d => av.classList.remove(d.css));
+    const owner=av.dataset.userId||av.querySelector('[data-user-id]')?.dataset.userId||av.closest('[data-user-id],[data-participant-id]')?.dataset.userId||av.closest('[data-participant-id]')?.dataset.participantId;
+    if (prefs.frame&&owner===session?.user.id) {
       const frame = DECORATIONS.find(d => d.id === prefs.frame);
-      if (frame?.css) av.classList.add(frame.css);
+      if (frame?.css&&frame.type==='frame') av.classList.add(frame.css);
     }
   });
   document.querySelectorAll('.rich-profile').forEach(p => {
     DECORATIONS.filter(d => d.type === 'effect').forEach(d => p.classList.remove(d.css));
-    if (prefs.effect) {
-      const effect = DECORATIONS.find(d => d.id === prefs.effect);
+    if (prefs.profileEffect&&p.dataset.userId===session?.user.id) {
+      const effect = DECORATIONS.find(d => d.id === prefs.profileEffect&&d.type==='effect');
       if (effect?.css) p.classList.add(effect.css);
     }
   });
+  document.querySelectorAll('.rp-banner').forEach(b=>{for(const d of DECORATIONS.filter(d=>d.type==='banner'&&d.css))b.classList.remove(d.css);if(b.closest('[data-user-id]')?.dataset.userId===session?.user.id){const style=DECORATIONS.find(d=>d.type==='banner'&&d.id===prefs.bannerStyle);if(style?.css)b.classList.add(style.css);}});
 }
 
-function openDecorationGallery() {
-  showDialog('Loja de Perfil', container => {
-    const prefs = loadProfilePrefs();
-    const themes = [...new Set(DECORATIONS.map(d => d.theme))];
-    themes.forEach(theme => {
-      container.append(el('h3', '', theme));
-      const grid = el('div');
-      grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin:8px 0 16px;';
-      DECORATIONS.filter(d => d.theme === theme).forEach(d => {
-        const btn = el('button', 'soft-button', d.name);
-        btn.style.cssText = 'padding:8px 6px;font-size:11px;min-height:52px;';
-        btn.title = d.type === 'frame' ? 'Decoração de avatar' : 'Efeito de perfil';
-        if ((d.type === 'frame' && prefs.frame === d.id) || (d.type === 'effect' && prefs.effect === d.id)) {
-          btn.style.borderColor = 'var(--accent)';
-          btn.style.background = 'var(--accent-soft)';
-        }
-        btn.onclick = () => {
-          const next = { ...loadProfilePrefs() };
-          if (d.type === 'frame') next.frame = d.id;
-          else next.effect = d.id;
-          saveProfilePrefs(next);
-          applyDecorations();
-          $('app-dialog').close();
-          toast((d.type === 'frame' ? 'Decoração' : 'Efeito') + ' aplicado: ' + d.name);
-        };
-        grid.append(btn);
-      });
-      container.append(grid);
-    });
-    container.append(el('p', 'muted', '27 opções em temas variados. Escolha frames e efeitos. Aplicado imediatamente e salvo localmente.'));
-  });
-}
-
+function openDecorationGallery(){return openProfileAppearance('openDecorationGallery');}
 // Apply on load and after profile render
 const baseShowProfile = showProfile;
 showProfile = function(p) {
   baseShowProfile(p);
-  setTimeout(applyDecorations, 50);
+  applyDecorations();
 };
 setTimeout(applyDecorations, 1000);
+
+// The status selector stays reachable when the mobile navigation drawer closes.
+document.body.append($('status-popover'));
+
+function callProfileTarget(target){return target instanceof Element?target.closest('.participant .avatar,.participant-name,.media-tile figcaption>span'):null;}
+document.addEventListener('click',event=>{const target=callProfileTarget(event.target),tile=target?.closest('[data-participant-id]');if(tile)showProfile(person(tile.dataset.participantId));});
+let profileTargetsFrame;
+const callProfilesObserver=new MutationObserver(()=>{if(profileTargetsFrame)return;profileTargetsFrame=requestAnimationFrame(()=>{profileTargetsFrame=null;for(const node of $('voice-stage').querySelectorAll('.participant .avatar,.participant-name,.media-tile figcaption>span')){node.tabIndex=0;node.setAttribute('role','button');node.setAttribute('aria-label','Abrir perfil de '+(node.closest('.participant')?.querySelector('.participant-name')?.textContent||node.textContent));}});});
+callProfilesObserver.observe($('voice-stage'),{childList:true,subtree:true});
+$('voice-stage').addEventListener('keydown',event=>{if(['Enter',' '].includes(event.key)&&callProfileTarget(event.target)){event.preventDefault();event.target.click();}});
+
+// ===== Big Picture mode (Steam-style) =====
+function toggleBigPicture(force) {
+  const on = force !== undefined ? force : !document.body.classList.contains('big-picture');
+  document.body.classList.toggle('big-picture', on);
+  localStorage.setItem('orbita-big-picture', on ? '1' : '0');
+  toast(on ? 'Modo Big Picture ativado' : 'Modo Big Picture desativado');
+  let bar = document.querySelector('.bp-bar');
+  if (on && !bar) {
+    bar = document.createElement('div');
+    bar.className = 'bp-bar';
+    const channels=document.createElement('button');channels.textContent='Canais';channels.className='mobile-nav-btn';channels.onclick=()=>document.body.classList.toggle('mobile-menu-open');
+    const exit = document.createElement('button');
+    exit.textContent = 'Sair do Big Picture';
+    exit.onclick = () => toggleBigPicture(false);
+    const settings = document.createElement('button');
+    settings.textContent = 'Configurações';
+    settings.onclick = () => $('settings').click();
+    bar.append(channels,exit,settings);
+    document.querySelector('.main').prepend(bar);
+  } else if (!on && bar) {
+    bar.remove();
+  }
+}
+if (localStorage.getItem('orbita-big-picture') === '1') setTimeout(() => toggleBigPicture(true), 800);
+document.addEventListener('keydown', e => {
+  if (e.altKey && e.key === 'Enter') { e.preventDefault(); toggleBigPicture(); }
+});
+
+
+const settingsBeforeBigPicture=$('settings').onclick;
+$('settings').onclick=function(event){settingsBeforeBigPicture.call(this,event);const box=$('dialog-content').querySelector('.dialog-body');if(!box)return;box.append(el('p','muted','A redução de ruído, o cancelamento de eco e o ganho automático são aplicados pelos controles de Áudio acima. O filtro adicional de voz pode ser escolhido em Entrada e saída de áudio.'),button('Alternar Big Picture (Alt+Enter)',()=>{$('app-dialog').close();toggleBigPicture();}));};
+
+communityUX=initCommunityUX({
+ state:()=>({session,selected,channels,activeCommunity,room,home}),invite:()=>showCommunityInvite(),communityName:()=>communities.find(c=>c.id===activeCommunity)?.name||'Seu servidor',el,button,dialog:showDialog,report:error=>toast(errorText(error)),
+ select:channel=>selectChannel(channel),edit:message=>messageAction(message,'edit'),
+ lastOwnMessage:()=>[...messages.values()].filter(m=>m.author_id===session?.user.id&&!m.thread_root).sort((a,b)=>b.created_at.localeCompare(a.created_at))[0],
+ targets:()=>{if(!session)return [];const entries=[];for(const c of channels)entries.push({key:'channel:'+c.id,name:c.name,description:(c.kind==='voice'?'Sala de voz':'Canal de texto')+' · '+(communities.find(x=>x.id===c.community_id)?.name||'Servidor'),symbol:c.kind==='voice'?'◖':'#',open:()=>selectChannel(c)});for(const c of communities)entries.push({key:'server:'+c.id,name:c.name,description:'Servidor',symbol:'◎',open:()=>openCommunity(c)});const peers=new Set();for(const c of conversations){const p=person(otherUser(c));peers.add(p.id);entries.push({key:'dm:'+c.id,name:p.display_name,description:'Conversa · @'+p.username,symbol:'@',open:()=>openConversation(c)});}for(const f of friendships.filter(f=>f.status==='accepted')){const id=f.requester_id===session.user.id?f.recipient_id:f.requester_id;if(peers.has(id))continue;const p=person(id);entries.push({key:'friend:'+id,name:p.display_name,description:'Amigo · @'+p.username,symbol:'@',open:()=>startConversation(p)});}return entries;}
+});
+const renderMessagesBeforeUX=renderMessages;renderMessages=(...args)=>{renderMessagesBeforeUX(...args);communityUX.messages();};
+const renderChannelsBeforeUX=renderChannels;renderChannels=()=>{renderChannelsBeforeUX();communityUX.channels();};
+const selectBeforeUX=selectChannel;selectChannel=async channel=>{await selectBeforeUX(channel);communityUX.update();};
+const friendsBeforeUX=showFriends;showFriends=()=>{friendsBeforeUX();communityUX.update();};
+communityUX.update();
+
+// Device preferences are local; no microphone is opened while listing settings.
+audioTools=initAudioControls({el,button,toast,dialog:showDialog,room:()=>room,noise:()=>noise,output:async id=>{await setUploadedVideoOutput(id);await enhancements.setAudioOutput(id);}});
+callReactions=initCallReactions({el,button,toast,dialog:showDialog,room:()=>room});
+const settingsBeforeAudioDevices=$('settings').onclick;
+$('settings').onclick=()=>{settingsBeforeAudioDevices();audioTools.fields($('dialog-content'));};
+
+const adminContext={el,button,toast,checked,showDialog,inputField,errorText,apiFetch,
+ state:()=>({db,session,people,siteRoles,activeCommunity,selected}),hasPermission:permission=>hasCommunityPermission(permission),
+ refreshRoles:async()=>{siteRoles=await checked(db.from('site_roles').select('*'));renderMembers();},
+ transcripts:async()=>{const module=await(lulaTask||=import('./luladroid.js'));if(session)module.transcriptHistory(lulaContext);},
+ reports:async()=>{const tools=await loadSocialTools();if(session)tools.moderation();},moderation:()=>enhancements.showModeration(),audit:()=>enhancements.showAudit(),clearDraft:()=>{drafts.set(draftKey(selected),'');resizeComposer();}
+};
+
+let adminTask;
+function loadAdmin(){if(!adminTask)adminTask=import('./admin-controls.js').then(module=>module.initAdminControls(adminContext)).catch(error=>{adminTask=null;throw error;});return adminTask;}
+const settingsBeforeLazyAdmin=$('settings').onclick;
+$('settings').onclick=()=>{settingsBeforeLazyAdmin();if(siteRoles.some(r=>r.user_id===session?.user.id)){const box=$('dialog-content').querySelector('.dialog-body')||$('dialog-content');box.append(button('Administração da Órbita',async()=>{const admin=await loadAdmin();admin.management();}));}};
+$('message-form').addEventListener('submit',event=>{const value=$('message-input').value.trim();if(!/^\/(admin|adm|removeradm|silenciar|liberar|banir|desbanir|auditoria|ajuda)(?:\s|$)/i.test(value))return;if(window.orbitaAdminReady)return;event.preventDefault();event.stopImmediatePropagation();const uid=session?.user.id;loadAdmin().then(admin=>{if(session?.user.id===uid&&$('message-input').value.trim()===value)admin.command(value);}).catch(error=>toast(errorText(error)));},true);
+
+initAppUpdates({room:()=>room,dirty:()=>!!$('message-input').value.trim()||!!document.querySelector('.sf-composer textarea')?.value.trim(),beforeReload:()=>saveComposerDraft()});
+
+initThemeAccessibility();
+
+shareReceiver=initShareReceiver({el,button,showDialog,toast,insertText:insertComposer,state:()=>({session,channels,conversations}),conversationName:c=>person(otherUser(c)).display_name,select:target=>target.private?openConversation(target):selectChannel(target),sendFiles:files=>enhancements.sendFiles(files)});
+
+let profileAppearanceTask;
+async function openProfileAppearance(method){const uid=session?.user.id;try{if(!profileAppearanceTask)profileAppearanceTask=import('./profile-appearance.js').then(module=>module.initProfileAppearance({el,button,showDialog,loadProfilePrefs,saveProfilePrefs,applyDecorations,toast,state:()=>({profile})})).catch(error=>{profileAppearanceTask=null;throw error;});const appearance=await profileAppearanceTask;if(session?.user.id===uid)appearance[method]();}catch(error){toast(errorText(error));}}
+
+const socialLogin=initSocialLogin({toast});
+initNavigationMotion();
+window.addEventListener('pagehide',()=>{saveComposerDraft();drafts.flush();});
+
+let socialToolsTask;const welcomeAccess=new Map();
+function loadSocialTools(){return socialToolsTask||=(import('./social-tools.js').then(module=>module.initSocialTools({el,button,toast,showDialog,inputField,checked,
+ state:()=>({db,session,people,activeCommunity,selected}),legacyReports:()=>enhancements.showReports(),legacyFeedReports:async()=>{const instance=await loadFeed();instance.legacyReports();},config:()=>config,invalidateWelcome:id=>{welcomeAccess.delete(id);communityViews.delete(id);},isAdmin:()=>siteRoles.some(r=>r.user_id===session?.user.id),canManage:()=>hasCommunityPermission('manage_channels'),openCommunity:c=>openCommunity(c),refreshAccess:()=>loadCommunityAccess(),
+ openProfile:id=>feed.open('profile',{author:id}),openPost:id=>feed.open('thread',{parent:id}),
+ shareDM:async(id,text)=>{const p=person(id);await startConversation(p);if(selected?.private)insertComposer(text);}
+})).catch(error=>{socialToolsTask=null;throw error;}));}
+async function ensureCommunityWelcome(community){
+ const user=session?.user.id;if(!user)return false;
+ if(welcomeAccess.get(community))return true;
+ const info=await checked(db.from('community_welcome').select('community_id,rules,version').eq('community_id',community).maybeSingle());
+ if(session?.user.id!==user)return false;
+ if(!info?.rules?.trim()||communities.find(c=>c.id===community)?.created_by===user||siteRoles.some(r=>r.user_id===user)){welcomeAccess.set(community,true);return true;}
+ if(communities.some(c=>c.id===community&&!c.invite_only))await checked(db.rpc('join_public_community',{target:community}));if(session?.user.id!==user)return false;
+ const accepted=await checked(db.from('community_rule_acceptances').select('version').eq('community_id',community).eq('user_id',user).maybeSingle());
+ if(session?.user.id!==user)return false;
+ if(accepted?.version===info.version){welcomeAccess.set(community,true);return true;}
+ const tools=await loadSocialTools();if(session?.user.id!==user)return false;
+ const okay=await tools.welcome(info);if(okay){welcomeAccess.set(community,true);communityViews.delete(community);}return okay;
+}
+const moreTools=button('Sua Órbita · privacidade e novidades',async()=>{const tools=await loadSocialTools();if(session)tools.menu();},'ux-shortcuts-help');moreTools.id='social-tools';$('dm-quick-find').after(moreTools);
+const beforeSocialTools=$('settings').onclick;$('settings').onclick=()=>{beforeSocialTools();$('dialog-content').querySelector('.dialog-body')?.append(button('Privacidade, dados e recursos sociais',async()=>{const tools=await loadSocialTools();if(session)tools.menu();}));};
+
+function sharePostToConversation(post){
+ const user=session?.user.id;if(!user)return;showDialog('Compartilhar publicação',box=>{
+ const select=el('select');select.setAttribute('aria-label','Destino da publicação');
+ for(const c of channels.filter(c=>c.kind==='text'))select.append(new Option('#'+c.name,'channel:'+c.id));for(const c of conversations)select.append(new Option('@'+person(otherUser(c)).display_name,'dm:'+c.id));
+ box.append(el('p','muted','O link será colocado no rascunho. Revise e envie quando quiser. Publicações privadas continuam exigindo permissão.'),select,button('Colocar na conversa',async()=>{if(session?.user.id!==user)return;const [kind,id]=select.value.split(':');const target=(kind==='dm'?conversations:channels).find(c=>c.id===id);if(!target)throw Error('Escolha uma conversa.');if(kind==='dm')await openConversation(target);else await selectChannel(target);if(session?.user.id===user){insertComposer(new URL('/p/'+post.id,location.origin).href);$('app-dialog').close();}}));
+ });
+}
+
+async function trackVisibleActivity(){if(session&&!document.hidden&&profile?.presence_status!=='invisible')await db.rpc('touch_activity');}
+setInterval(()=>trackVisibleActivity().catch(()=>{}),300000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)trackVisibleActivity().catch(()=>{});});
+
+function chooseOAuthNickname(next){
+ if(!['google','discord'].includes(next.user.app_metadata?.provider)||!/^orbiter_[a-f0-9]{12}$/.test(profile?.username||''))return Promise.resolve();
+ return new Promise(resolve=>{const user=next.user.id;showDialog('Escolha seu nickname',box=>{box.append(el('p','muted','Este será seu nome na Órbita e seu @ para adicionar amigos. Você pode mudar depois.'));const form=el('form'),name=inputField(form,'Seu nickname','',24);name.pattern='[A-Za-z0-9_]{3,24}';name.minLength=3;name.required=true;const save=el('button','primary','Continuar');save.type='submit';form.append(save);form.onsubmit=async event=>{event.preventDefault();save.disabled=true;try{await checked(db.from('profiles').update({display_name:name.value.trim()}).eq('id',user));if(session?.user.id!==user)return;await loadSocial();$('app-dialog').close();}catch(error){toast(error.code==='23505'?'Esse nickname já está em uso. Escolha outro.':errorText(error));}finally{save.disabled=false;}};box.append(form);});$('app-dialog').addEventListener('close',resolve,{once:true});});
+}
+
+async function jumpToReply(id){
+ const user=session?.user.id,target=selected&&{...selected},version=generation;if(!target||!user)return;
+ const root=messages.get(id)||await checked(db.from(target.private?'direct_messages':'messages').select(messageFields).eq(target.private?'conversation_id':'channel_id',target.id).eq('id',id).maybeSingle());
+ if(session?.user.id!==user||selected?.id!==target.id||generation!==version)return;if(!root)throw Error('A mensagem não está mais disponível.');messages.set(root.id,root);renderMessages();requestAnimationFrame(()=>{if(generation!==version)return;const node=document.querySelector('[data-message-id="'+CSS.escape(root.id)+'"]');node?.scrollIntoView({block:'center'});node?.classList.add('message-target');});
+}
+
+const lulaContext={el,button,toast,checked,showDialog,apiFetch,person,state:()=>({db,session,room})};
+async function loadLuladroid(target,channel){const user=session?.user.id;const module=await(lulaTask||=import('./luladroid.js'));if(room!==target||session?.user.id!==user)return;lulaController?.stop();lulaController=module.initLuladroid(lulaContext,target,(channel.private?'direct-':'channel-')+channel.id);}

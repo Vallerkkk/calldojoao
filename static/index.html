@@ -6,25 +6,29 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://psreyaufhrquixfjzuek.supabase.co" crossorigin>
 <title>Órbita — Comunidade, Chat & Voz em Tempo Real</title>
-<link rel="stylesheet" href="/static/style.css?v=call-media-20261020-1">
+<link rel="stylesheet" href="/static/style.css">
 <meta name="theme-color" content="#10101b">
 <link rel="manifest" href="/static/manifest.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/static/icons/icon.svg">
 <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-<link rel="stylesheet" href="/static/enhancements.css?v=youtube-20261020-1">
-<link rel="stylesheet" href="/static/interface.css?v=launcher-20261020-1">
-<link rel="stylesheet" href="/static/fluency.css?v=devices-20261020-1">
-<link rel="stylesheet" href="/static/social-feed.css?v=feed-20261020-1">
-<link rel="stylesheet" href="/static/call-layout.css?v=profile-rich-20261021-7">
-<script src="https://js.puter.com/v2/"></script>
+<link rel="stylesheet" href="/static/enhancements.css">
+<link rel="stylesheet" href="/static/interface.css">
+<link rel="stylesheet" href="/static/fluency.css">
+<link rel="stylesheet" href="/static/call-layout.css">
+<link rel="stylesheet" href="/static/community-ux.css">
+<link rel="stylesheet" href="/static/identity.css">
+<link rel="stylesheet" href="/static/polish.css">
+<link rel="preload" href="/static/vendor/fonts/inter-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/vendor/fonts/space-grotesk-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
 </head>
 <body>
+<div id="entry-animation" class="entry-animation" role="status" aria-live="polite"><img src="/static/icons/icon.svg" width="72" height="72" alt=""><strong>Entrando na sua Órbita</strong><span>Preparando suas conversas…</span><div class="entry-progress" aria-hidden="true"></div></div>
 
 <section id="auth-view" class="auth-view">
   <div class="intro"><a class="wordmark" href="/">◉ ÓRBITA<span>BETA</span></a><div><p class="eyebrow">PERTO, DE QUALQUER LUGAR</p><h1>As melhores ideias<br>começam com<br><em>uma conversa.</em></h1><p class="intro-copy">Seu espaço para conversar, criar e estar junto.<br>Texto, voz e vídeo. Tudo na mesma órbita.</p><div class="orbit-art" aria-hidden="true"><div class="planet">◉</div><span class="sat s1">voz</span><span class="sat s2">ideias</span><span class="sat s3">conexões</span></div></div><small>Um espaço compartilhado. Infinitas conversas.</small></div>
   <div class="auth-card"><p class="eyebrow">BEM-VINDO À SUA COMUNIDADE</p><h2 id="auth-title">Bom ter você aqui.</h2><p id="auth-description" class="muted">Entre para encontrar a sua galera.</p>
   <div id="setup" class="notice" hidden>O site está pronto para configurar. Preencha o arquivo <code>.env</code> e execute <code>supabase.sql</code> no Supabase. Consulte o README da pasta.</div>
-  <form id="auth-form"><label id="name-label" hidden>Como devemos chamar você?<input id="display-name" maxlength="50" autocomplete="nickname" placeholder="Seu nome"></label><label>E-mail<input id="email" type="email" autocomplete="email" required placeholder="voce@exemplo.com"></label><label>Senha<input id="password" type="password" minlength="8" autocomplete="current-password" required placeholder="Pelo menos 8 caracteres"></label><button id="auth-submit" class="primary" type="submit">Entrar na Órbita <span>↗</span></button></form>
+  <form id="auth-form"><label id="name-label" hidden>Seu nickname (também será seu @)<input id="display-name" disabled maxlength="24" minlength="3" pattern="[A-Za-z0-9_]{3,24}" autocomplete="nickname" placeholder="Ex.: VallerJP"></label><label>E-mail<input id="email" type="email" autocomplete="email" required placeholder="voce@exemplo.com"></label><label>Senha<input id="password" type="password" minlength="8" autocomplete="current-password" required placeholder="Pelo menos 8 caracteres"></label><button id="auth-submit" class="primary" type="submit">Entrar na Órbita <span>↗</span></button></form>
   <p id="auth-status" role="status" class="muted"></p><button id="toggle-auth" class="text-button">Ainda não tem conta? Cadastre-se</button><p class="fine">Microfone e câmera só são ativados com a sua permissão.</p><a class="auth-install-link" href="/instalar" target="_blank" rel="noopener noreferrer">↓ Baixar / instalar Órbita</a></div>
 </section>
 
@@ -383,12 +387,6 @@
           <span class="ch-desc" id="call-status">Voz, câmera e tela em tempo real</span>
         </div>
         <div class="chat-actions">
-          <button id="call-chat-toggle-btn" class="call-icon" title="Chat exclusivo e transcrições da chamada">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            </svg>
-            <span class="call-chat-badge" id="call-chat-badge" hidden>0</span>
-          </button>
           <button id="back-to-call" title="Voltar ao chat de texto mantendo a call">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -397,56 +395,15 @@
         </div>
       </header>
 
-      <div class="voice-stage-wrap" id="voice-stage-wrap">
-        <div class="voice-stage" id="voice-stage"><div id="participants" class="participants"></div><div id="media-grid" class="media-grid"></div><div id="empty-call" class="empty-call"><h2>Entre na conversa.</h2><p>Voz, câmera e compartilhamento de tela com áudio.</p></div></div>
-        
-        <!-- CHAT EXCLUSIVO DA CALL E TRANSCRIÇÕES EM TEMPO REAL -->
-        <aside class="call-chat-panel hidden" id="call-chat-panel">
-          <div class="call-chat-header">
-            <div class="call-chat-title">
-              <span class="call-chat-icon">💬</span>
-              <div class="call-chat-title-text">
-                <strong>Chat da Chamada</strong>
-                <span class="call-chat-sub" id="call-stt-status">Transcrição ativa · "eai LulaDroid"</span>
-              </div>
-            </div>
-            <div class="call-chat-header-actions">
-              <button type="button" id="call-stt-toggle-btn" class="call-chat-mini-btn active" title="Pausar ou ativar transcrição">🎙️</button>
-              <button type="button" id="call-chat-close-btn" class="call-chat-mini-btn" title="Fechar painel do chat">✕</button>
-            </div>
-          </div>
-
-          <div class="luladroid-card">
-            <div class="luladroid-card-header">
-              <span class="luladroid-badge">🤖 LulaDroid Ativo</span>
-              <span class="luladroid-state" id="luladroid-state-indicator">Pronto na call</span>
-            </div>
-            <p class="luladroid-help">Fale na chamada: <strong>"eai LulaDroid, &lt;sua pergunta&gt;"</strong> para analisar com Gemini e responder por voz!</p>
-            <button type="button" id="luladroid-ask-btn" class="luladroid-quick-btn">Falar com LulaDroid ⚡</button>
-          </div>
-
-          <div class="call-chat-messages" id="call-chat-messages" role="log" aria-live="polite">
-            <div class="call-chat-empty" id="call-chat-empty">
-              <span class="empty-icon">🎙️</span>
-              <p>As transcrições de voz da chamada e mensagens aparecem aqui em tempo real.</p>
-              <small>Diga <em>"eai LulaDroid"</em> para perguntar qualquer coisa!</small>
-            </div>
-          </div>
-
-          <div class="call-chat-input-wrap">
-            <form id="call-chat-form" class="call-chat-form">
-              <input type="text" id="call-chat-input" placeholder="Mensagem na call ou 'eai LulaDroid...'..." autocomplete="off">
-              <button type="submit" id="call-chat-send-btn" class="call-chat-send" title="Enviar mensagem">➤</button>
-            </form>
-          </div>
-        </aside>
-      </div><div class="join-wrap"><button id="join-call" class="primary">Entrar na sala</button></div>
+      <div class="voice-stage" id="voice-stage"><div id="participants" class="participants"></div><div id="media-grid" class="media-grid"></div><div id="empty-call" class="empty-call"><h2>Entre na conversa.</h2><p>Voz, câmera e compartilhamento de tela com áudio.</p></div></div><div class="join-wrap"><button id="join-call" class="primary">Entrar na sala</button></div>
 
       <div class="soundboard-bar" id="soundboard-bar">
         <button type="button" class="sb-fx-btn" data-sfx="fanfare">🎺 Fanfarra</button>
         <button type="button" class="sb-fx-btn" data-sfx="coin">🪙 Moeda 8-Bit</button>
         <button type="button" class="sb-fx-btn" data-sfx="laser">⚡ Laser</button>
         <button type="button" class="sb-fx-btn" data-sfx="powerup">🚀 Power-Up</button>
+        <button type="button" class="sb-fx-btn" data-sfx="applause">👏 Aplausos</button>
+        <button type="button" class="sb-fx-btn" data-sfx="pop">🫧 Pop</button>
       </div>
       <div class="voice-controls" id="active-controls" hidden><button id="deafen" class="vc-btn" aria-pressed="false" title="Silenciar áudio">🎧</button>
         <button class="vc-btn" id="mic" title="Microfone">
@@ -521,4 +478,4 @@
 <button id="back-to-call-dock" hidden>Voltar à chamada</button>
 <div id="incoming-call" class="incoming-call" hidden><strong id="incoming-name"></strong><button id="answer-call" class="primary">Atender</button><button id="decline-call" class="danger">Recusar</button></div>
 <dialog id="app-dialog" aria-labelledby="dialog-title"><div class="dialog-header"><h2 id="dialog-title"></h2><button id="dialog-close" aria-label="Fechar">×</button></div><div id="dialog-content"></div></dialog>
-<script type="module" src="/static/app.js?v=profile-rich-20261021-7"></script><div id="creators-credit" class="creators-credit"></div></body></html>
+<script type="module" src="/static/app.js"></script><div id="creators-credit" class="creators-credit"></div></body></html>

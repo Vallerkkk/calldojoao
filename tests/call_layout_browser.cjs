@@ -4,7 +4,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
 const tmp=path.resolve(__dirname,'../work/browser-temp');fs.mkdirSync(tmp,{recursive:true});process.env.TEMP=tmp;process.env.TMP=tmp;
 let browser;
 (async()=>{
- browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});const report=[];
+ browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||undefined});const report=[];
  for(const mobile of [false,true]){
   const context=await browser.newContext({viewport:{width:mobile?390:1536,height:mobile?844:892},isMobile:mobile,hasTouch:mobile});
   await context.route('**/*',route=>{const url=route.request().url();if(url.includes('supabase-js'))return route.fulfill({contentType:'application/javascript',body:stub});if(url.includes('livekit-client'))return route.fulfill({contentType:'application/javascript',body:fs.readFileSync(path.join(__dirname,'fixtures/livekit_stub.mjs'),'utf8')});if(url.endsWith('/api/config'))return route.fulfill({json:{configured:true,supabaseUrl:'https://qa.supabase.co',supabaseKey:'qa',callsConfigured:true,storageConfigured:true,pushConfigured:false}});if(url.endsWith('/join'))return route.fulfill({json:{url:'wss://fake.invalid',token:'fake',canPublish:true}});return route.continue();});
@@ -32,7 +32,7 @@ let browser;
   await page.locator('#mic-options').click();await page.getByRole('button',{name:'Configurar microfone, ruído e pressionar para falar',exact:true}).click();assert.equal(await page.locator('#app-dialog').evaluate(n=>n.open),true);await close();
   await page.locator('#camera-options').click();await page.locator('#camera-facing-menu').selectOption('environment');await close();assert.equal(await page.locator('#camera-facing').inputValue(),'environment');
   await page.locator('#screen-options').click();const check=page.locator('#app-dialog input[type=checkbox]');await check.uncheck();assert.equal(await page.locator('#share-screen-audio').isChecked(),false);await check.check();await close();
-  await page.locator('#vc-react-call').click();await page.waitForFunction(()=>window.__qaPublished?.some(p=>p.topic==='orbita-reaction'));
+  await page.locator('#vc-react-call').click();await page.getByRole('button',{name:'Reagir com 🎉',exact:true}).click();await page.waitForFunction(()=>window.__qaPublished?.some(p=>p.topic==='orbita-reaction'));
   await page.locator('#call-soundboard').click();await page.getByRole('button',{name:/Fanfarra/}).click();await page.waitForFunction(()=>window.__qaPublished?.some(p=>p.topic==='orbita-sound'));
   await page.locator('#call-more').click();await page.getByRole('button',{name:'Qualidade da conexão',exact:true}).click();await page.getByRole('heading',{name:'Conexão da chamada',exact:true}).waitFor();await close();
   await page.locator('#call-invite').click();await page.getByRole('heading',{name:'Convidar pessoas',exact:true}).waitFor();await close();

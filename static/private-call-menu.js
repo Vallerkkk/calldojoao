@@ -1,4 +1,4 @@
-import { requestWithDeadline } from './chat-state.js?v=videochamada-20261020-1';
+import { requestWithDeadline } from './chat-state.js';
 
 // Calls open on the provider's own origin; its hardware check owns media permissions.
 export function choosePrivateCall(context, conversation, integratedCall) {

@@ -1,0 +1,25 @@
+import {build} from 'esbuild';
+import {transform} from 'lightningcss';
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {createHash} from 'node:crypto';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),staticDir=path.join(root,'static'),dist=path.join(staticDir,'dist');
+await mkdir(dist,{recursive:true});
+const hash=data=>createHash('sha256').update(data).digest('hex').slice(0,16);
+const cssMap={};const cssFiles=['style','enhancements','interface','fluency','social-feed','call-layout','community-ux','identity','themes','polish'];
+for(const name of cssFiles){const source=await readFile(path.join(staticDir,name+'.css'));const {code}=transform({filename:name+'.css',code:source,minify:true,targets:{chrome:110<<16,safari:16<<16,firefox:115<<16}});const file=name+'-'+hash(code)+'.css';await writeFile(path.join(dist,file),code);cssMap['/static/'+name+'.css']='/static/dist/'+file;}
+const result=await build({absWorkingDir:root,entryPoints:['static/app.js'],bundle:true,splitting:true,format:'esm',platform:'browser',target:['chrome110','safari16','firefox115'],minify:true,metafile:true,outdir:'static/dist',entryNames:'[name]-[hash]',chunkNames:'chunk-[name]-[hash]',legalComments:'eof',external:['https://*','/static/vendor/*'],plugins:[{name:'hashed-css-urls',setup(b){b.onLoad({filter:/\.js$/},async args=>{let contents=await readFile(args.path,'utf8');for(const [original,url]of Object.entries(cssMap))contents=contents.replaceAll(JSON.stringify(original),JSON.stringify(url)).replaceAll("'"+original+"'",JSON.stringify(url));return {contents,loader:'js'};});}}]});
+const outputs=Object.keys(result.metafile.outputs).filter(p=>p.endsWith('.js')),entry=outputs.find(p=>result.metafile.outputs[p].entryPoint==='static/app.js');
+if(!entry)throw Error('Missing JavaScript entry');
+const files=[...outputs.map(p=>'/'+p),...Object.values(cssMap)].sort();
+let html=await readFile(path.join(staticDir,'index.html'),'utf8');const version=hash(JSON.stringify(files)+hash(html)+hash(await readFile(path.join(staticDir,'manifest.webmanifest'))));
+html=html.replace(/src="\/static\/app\.js(?:\?[^\"]*)?"/,'src="/'+entry+'"');
+for(const [original,url]of Object.entries(cssMap))html=html.replaceAll(new RegExp(original.replaceAll('.','\\.')+'(?:\\?[^" ]*)?','g'),url);
+html=html.replace('</head>',`<meta name="orbita-version" content="${version}"></head>`);
+await writeFile(path.join(dist,'index.html'),html);
+const integrity={};for(const url of files)integrity[url]=createHash('sha256').update(await readFile(path.join(root,url.slice(1)))).digest('hex');
+const manifest={version,entry:'/'+entry,files,css:cssMap,integrity};
+await writeFile(path.join(dist,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
+await writeFile(path.join(dist,'meta.json'),JSON.stringify(result.metafile,null,2)+'\n');
+console.log(JSON.stringify({version,entry:manifest.entry,entryBytes:result.metafile.outputs[entry].bytes,javascriptFiles:outputs.length}));

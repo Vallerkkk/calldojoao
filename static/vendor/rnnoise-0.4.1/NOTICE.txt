@@ -1,0 +1,4 @@
+web-noise-suppressor 0.4.1 (MIT), https://github.com/sapphi-red/web-noise-suppressor
+RNNoise (BSD-3-Clause), https://github.com/xiph/rnnoise
+Package SHA512: hy2GnF079+zi4n9BZUf+GGIQ1IofApAk6rgGMyMQ3soHfz/GKu1pcCsmePyIHVvUuv1LrFudw9BmmBqoOKay5w==
+Only the RNNoise runtime, worklet and WASM are used. Audio is processed locally.

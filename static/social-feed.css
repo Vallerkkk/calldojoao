@@ -7,3 +7,49 @@
 .social-feed .sf-people-inline{display:block;width:auto;padding:16px 20px;overflow:visible}.sf-profile-bio>.sf-button{margin-right:8px;margin-top:10px}body[data-color-mode=light] .sf-content a,body[data-color-mode=light] .sf-inline,body[data-color-mode=light] .sf-actions [aria-pressed=true],body[data-color-mode=light] .sf-tabs [aria-current=page]{color:#6941b7}
 
 .sf-tabs{overflow-x:auto;scrollbar-width:thin}.sf-tabs .sf-button{flex:1 0 auto;min-width:75px}.sf-latest{position:sticky;top:8px;z-index:5;display:block;margin:10px auto;background:var(--bg-elevated);color:var(--accent-hover);border-color:var(--accent)}.sf-notification{display:flex;align-items:center;gap:12px;padding:20px;border-bottom:1px solid var(--sf-line)}.sf-notification>div{flex:1;min-width:0}.sf-notification p{font-size:14px;margin:4px 0}.sf-notification strong{font-size:14px}
+
+/* Cleaner feed layout */
+.sf-post{transition:background .15s ease}
+.sf-post:hover{background:color-mix(in srgb,currentColor 3%,transparent)}
+.sf-media{display:grid;gap:8px;border-radius:14px;overflow:hidden;margin-top:12px}
+.sf-media[data-count="1"]{grid-template-columns:1fr}
+.sf-media[data-count="2"]{grid-template-columns:1fr 1fr}
+.sf-media[data-count="3"],.sf-media[data-count="4"]{grid-template-columns:1fr 1fr}
+.sf-media video,.sf-media img{
+  width:100%;
+  height:auto;
+  max-height:560px;
+  min-height:280px;
+  object-fit:contain;
+  object-position:center;
+  border-radius:12px;
+  background:#0a0a0f;
+  display:block;
+}
+.sf-media[data-count="1"] video,
+.sf-media[data-count="1"] img{
+  max-height:min(72dvh, 680px);
+  min-height:min(360px, 45dvh);
+  aspect-ratio:auto;
+}
+.sf-media[data-count="2"] video,
+.sf-media[data-count="2"] img,
+.sf-media[data-count="3"] video,
+.sf-media[data-count="3"] img,
+.sf-media[data-count="4"] video,
+.sf-media[data-count="4"] img{
+  max-height:320px;
+  min-height:200px;
+  object-fit:cover;
+}
+@media(max-width:780px){
+  .sf-media video,.sf-media img{max-height:420px;min-height:240px}
+  .sf-media[data-count="1"] video,
+  .sf-media[data-count="1"] img{max-height:min(68dvh, 520px);min-height:min(280px,40dvh)}
+}
+
+.sf-compose-bar{flex-wrap:wrap}.sf-composer>select{max-width:100%;min-height:44px}.sf-poll{display:grid;gap:8px;margin:12px 0}.sf-poll button{text-align:left;min-height:44px}.sf-long-post{margin:10px 0}.sf-long-post summary{cursor:pointer;min-height:44px;padding:10px}.sf-post{overflow-wrap:anywhere}
+
+.sf-header{flex-wrap:wrap;gap:8px}.sf-header summary{min-height:44px;padding:10px;cursor:pointer}.sf-header .sf-menu-items{max-width:calc(100vw - 32px);z-index:20}.sf-header .sf-menu{position:relative}
+
+.sf-explore-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:8px;padding:8px}.sf-explore-grid .sf-post{border:1px solid var(--sf-line);border-radius:12px;min-width:0}.sf-explore-grid .sf-actions{flex-wrap:wrap}@media(max-width:650px){.sf-explore-grid{grid-template-columns:minmax(0,1fr)}}

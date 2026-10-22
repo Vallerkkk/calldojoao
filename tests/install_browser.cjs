@@ -4,7 +4,7 @@ const base=process.env.ORBITA_TEST_URL||'http://127.0.0.1:8766/';
 const temporary=path.resolve(__dirname,'../work/browser-temp');fs.mkdirSync(temporary,{recursive:true});process.env.TEMP=temporary;process.env.TMP=temporary;
 let browser;
 (async()=>{
- browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',downloadsPath:temporary});
+ browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||undefined,downloadsPath:temporary});
  for(const width of [1440,390,320]){
   const context=await browser.newContext({viewport:{width,height:900}}),page=await context.newPage(),errors=[];
   page.on('pageerror',error=>errors.push(error.message));

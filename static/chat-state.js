@@ -1,6 +1,6 @@
 export const conversationKey = (user, target) => user && target?.id ? `${user}:${target.private ? 'dm' : 'channel'}:${target.id}` : '';
 
-// O cache Ã© da sessÃ£o: nÃ£o persiste mensagens privadas no dispositivo.
+// O cache é da sessão: não persiste mensagens privadas no dispositivo.
 export class ConversationCache {
   constructor({limit = 12, rows = 2000, ttl = 300000, now = Date.now} = {}) {
     this.limit = limit; this.rows = rows; this.ttl = ttl; this.now = now; this.items = new Map();
@@ -25,7 +25,7 @@ export class ConversationCache {
   clear() { this.items.clear(); }
 }
 
-// IDs locais nunca sÃ£o enviados ao banco; o servidor continua gerando os IDs reais.
+// IDs locais nunca são enviados ao banco; o servidor continua gerando os IDs reais.
 export class MessageOutbox {
   constructor(limit = 40) { this.limit = limit; this.items = new Map(); }
   add(user, target, content, reply) {
@@ -39,21 +39,25 @@ export class MessageOutbox {
   }
   observe(user, target, message) {
     const key = conversationKey(user, target);
-    const matches = [...this.items.values()].filter(item => item.key === key && item.user === message.author_id && item.content === message.content && (item.reply || null) === (message.reply_to || null) && !message.thread_root && ['sending', 'uncertain', 'checking'].includes(item.status) && Math.abs(Date.parse(message.created_at) - Date.parse(item.created_at)) < 300000);
+    const matches = [...this.items.values()].filter(item => item.key === key && !item.knownIds?.has(message.id) && item.user === message.author_id && item.content === message.content && (item.reply || null) === (message.reply_to || null) && !message.thread_root && ['sending', 'uncertain', 'checking'].includes(item.status) && Math.abs(Date.parse(message.created_at) - Date.parse(item.created_at)) < 300000);
     if (matches.length === 1) { matches[0].observedId = message.id; return matches[0]; }
   }
   remove(id) { this.items.delete(id); }
   clear() { this.items.clear(); }
 }
 
-// A navegaÃ§Ã£o cancela leituras antigas; o prazo impede controles presos em redes instÃ¡veis.
+// A navegação cancela leituras antigas; o prazo impede controles presos em redes instáveis.
 export function requestWithDeadline(query, {signal, timeout = 15000} = {}) {
+  if (signal?.aborted) { const error = new Error('Leitura cancelada.'); error.name = 'AbortError'; return Promise.reject(error); }
   const controller = new AbortController(); let timer, cancel;
-  const stop = name => { const error = new Error(name === 'TimeoutError' ? 'A conexÃ£o demorou demais. Tente novamente.' : 'Leitura cancelada.'); error.name = name; controller.abort(); cancel(error); };
+  const stop = name => { const error = new Error(name === 'TimeoutError' ? 'A conexão demorou demais. Tente novamente.' : 'Leitura cancelada.'); error.name = name; controller.abort(); cancel(error); };
   const cancellation = new Promise((_, reject) => { cancel = reject; });
   const abort = () => stop('AbortError');
   if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, {once: true});
   timer = setTimeout(() => stop('TimeoutError'), timeout);
-  const task = typeof query.abortSignal === 'function' ? query.abortSignal(controller.signal) : query;
+  const task = Promise.resolve().then(() => {
+    if (controller.signal.aborted) return cancellation;
+    return typeof query === 'function' ? query(controller.signal) : typeof query.abortSignal === 'function' ? query.abortSignal(controller.signal) : query;
+  });
   return Promise.race([Promise.resolve(task), cancellation]).finally(() => { clearTimeout(timer); signal?.removeEventListener('abort', abort); });
 }

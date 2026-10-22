@@ -1,5 +1,7 @@
 """Órbita: comunidade com texto e chamadas. Execute: python -m uvicorn app:app --reload."""
 import os
+import json
+import re
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
@@ -8,12 +10,14 @@ from uuid import UUID
 import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 from livekit import api
 from integrations import install
+from public_pages import install_public_pages
+from luladroid import install_luladroid
 from community_features import install_features
 from upstream import client_for, new_client, read_json
 from videochamada import configured as videochamada_configured
@@ -52,6 +56,12 @@ async def headers(request, call_next):
     response.headers['Permissions-Policy'] = 'camera=(self), microphone=(self), display-capture=(self)'
     if request.url.path.startswith('/api/') or request.url.path in ('/', '/sw.js', '/healthz'):
         response.headers['Cache-Control'] = 'no-store'
+    elif re.fullmatch(r'/static/dist/[\w-]+-[A-Za-z0-9]{8,16}\.(?:js|css)', request.url.path) and response.status_code in (200,304):
+        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    elif request.url.path.startswith('/static/vendor/fonts/') and response.status_code in (200,304):
+        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    elif request.url.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'no-cache'
     return response
 
 
@@ -62,14 +72,15 @@ def config():
     return {'supabaseUrl': s['SUPABASE_URL'],
             'supabaseKey': s['SUPABASE_PUBLISHABLE_KEY'],
             'configured': ready,
+            'dailyDigestConfigured': os.getenv('DAILY_DIGEST_ENABLED','').lower()=='true',
+            'sentryDsn': os.getenv('SENTRY_PUBLIC_DSN', '').strip(),
+            'umamiScript': os.getenv('UMAMI_SCRIPT_URL', '').strip(),
+            'umamiWebsiteId': os.getenv('UMAMI_WEBSITE_ID', '').strip(),
             'videochamadaConfigured': videochamada_configured(),
             'storageConfigured': True, 'uploadLimit': 26214400,
             'pushPublicKey': os.getenv('VAPID_PUBLIC_KEY',''),
             'pushConfigured': all(os.getenv(k) for k in ('VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY','PUSH_TRANSPORT_KEY')),
-            'callsConfigured': all(s[k] for k in ('LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET')),
-            'geminiApiKey': os.getenv('GEMINI_API_KEY', 'AQ.Ab8RN6LwIVMnELQD7LmloIbFn9gK3bu5MAgVV8Lmc1T6xOsRPA'),
-            'geminiProject': os.getenv('GEMINI_PROJECT', '735777445484'),
-            'luladroidEnabled': True}
+            'callsConfigured': all(s[k] for k in ('LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'))}
 
 
 async def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)):
@@ -136,8 +147,9 @@ def make_token(user, room_name, can_publish=True, stage=False, moderator=False):
     s = settings()
     if not all(s[k] for k in ('LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET')):
         raise HTTPException(503, 'As chamadas ainda não foram configuradas.')
-    metadata = user.get('user_metadata') or {}
-    name = str(metadata.get('display_name') or 'Participante')[:50]
+    metadata = user.get('user_metadata')
+    name = metadata.get('display_name') if isinstance(metadata, dict) else None
+    name = name.strip()[:50] if isinstance(name, str) and name.strip() else 'Participante'
     token = (api.AccessToken(s['LIVEKIT_API_KEY'], s['LIVEKIT_API_SECRET'])
         .with_identity(user['id']).with_name(name).with_ttl(timedelta(minutes=10))
         .with_grants(api.VideoGrants(room_join=True, room=room_name,
@@ -157,7 +169,19 @@ async def service_worker():
 
 @app.get('/')
 def index():
-    return FileResponse(ROOT / 'static' / 'index.html')
+    built = ROOT / 'static' / 'dist' / 'index.html'
+    return FileResponse(built if built.exists() else ROOT / 'static' / 'index.html')
+
+
+@app.get('/api/version')
+def version():
+    manifest = ROOT / 'static' / 'dist' / 'manifest.json'
+    return {'version': json.loads(manifest.read_text(encoding='utf-8'))['version'] if manifest.exists() else 'development'}
+
+
+@app.post('/share-target')
+def share_fallback():
+    return HTMLResponse('<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Compartilhar na Órbita</title><main><h1>Abra a Órbita primeiro</h1><p>Conclua a instalação e tente compartilhar novamente. Você também pode usar o botão de anexar na conversa.</p><a href="/">Abrir Órbita</a></main></html>',headers={'Cache-Control':'no-store'})
 
 
 @app.get('/instalar')
@@ -179,5 +203,7 @@ def download_desktop_installer():
 
 install(app, current_user, settings, make_token)
 install_features(app, current_user, settings)
+install_public_pages(app, settings)
+install_luladroid(app, current_user, settings)
 
 app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')
