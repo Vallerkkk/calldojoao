@@ -911,7 +911,7 @@ function renderSocial() {
   const pending=friendships.filter(f=>f.status==='pending'&&f.recipient_id===session.user.id).length;
   $('friends-badge').textContent=pending||'';
   const pinned=readPinnedDMs();
-  for(const c of [...conversations].sort((a,b)=>Number(pinned.includes(b.id))-Number(pinned.includes(a.id)))){const p=person(otherUser(c));const b=button('@ '+p.display_name,()=>openConversation(c),'channel'+(selected?.private&&selected.id===c.id?' active':''));b.dataset.channelId=c.id;const wrap=el('div','dm-pinned-row'),pin=button(pinned.includes(c.id)?'★':'☆',()=>{const next=readPinnedDMs().filter(id=>id!==c.id);if(!pinned.includes(c.id))next.unshift(c.id);localStorage.setItem('orbita-pinned-dms:'+session.user.id,JSON.stringify(next.slice(0,30)));renderSocial();},'dm-pin');pin.setAttribute('aria-label',(pinned.includes(c.id)?'Desafixar':'Fixar')+' conversa com '+p.display_name);pin.setAttribute('aria-pressed',String(pinned.includes(c.id)));wrap.append(b,pin);$('dm-channels').append(wrap);}
+  for(const c of [...conversations].sort((a,b)=>Number(pinned.includes(b.id))-Number(pinned.includes(a.id)))){const p=person(otherUser(c));const b=button('',()=>openConversation(c),'channel'+(selected?.private&&selected.id===c.id?' active':''));const name=el('span','channel-name','@ '+p.display_name);name.dir='auto';b.append(name);b.title='@'+p.username;b.dataset.channelId=c.id;const wrap=el('div','dm-pinned-row'),pin=button(pinned.includes(c.id)?'★':'☆',()=>{const next=readPinnedDMs().filter(id=>id!==c.id);if(!pinned.includes(c.id))next.unshift(c.id);localStorage.setItem('orbita-pinned-dms:'+session.user.id,JSON.stringify(next.slice(0,30)));renderSocial();},'dm-pin');pin.setAttribute('aria-label',(pinned.includes(c.id)?'Desafixar':'Fixar')+' conversa com '+p.display_name);pin.setAttribute('aria-pressed',String(pinned.includes(c.id)));wrap.append(b,pin);$('dm-channels').append(wrap);}
   enhancements?.decorateNavigation();
 }
 function showFriends() {
@@ -929,12 +929,12 @@ function renderFriends() {
     const p=person(f.requester_id===session.user.id?f.recipient_id:f.requester_id), row=el('article','friend-card');
     const avatar=el('span','avatar');setAvatar(avatar,p);
     const info=el('div','friend-info');info.append(el('strong','',p.display_name),el('small','', '@'+p.username+' · '+(f.status==='accepted'?(online.has(p.id)?'Online':'Offline'):(f.recipient_id===session.user.id?'Quer ser seu amigo':'Pedido enviado'))));
-    row.append(avatar,info);
+    const actions=el('div','friend-actions');row.append(avatar,info,actions);
     if(f.status==='accepted'){
-      row.append(button('Mensagem',()=>startConversation(p)),button('Ligar',()=>startConversation(p,true)),button('Remover',()=>removeFriend(f),'text-button'));
+      actions.append(button('Mensagem',()=>startConversation(p)),button('Ligar',()=>startConversation(p,true)),button('Remover',()=>removeFriend(f),'text-button'));
     }else{
-      if(f.recipient_id===session.user.id)row.append(button('Aceitar',async()=>{await checked(db.from('friendships').update({status:'accepted'}).eq('id',f.id));await loadSocial();},'primary'));
-      row.append(button(f.recipient_id===session.user.id?'Recusar':'Cancelar',()=>removeFriend(f),'text-button'));
+      if(f.recipient_id===session.user.id)actions.append(button('Aceitar',async()=>{await checked(db.from('friendships').update({status:'accepted'}).eq('id',f.id));await loadSocial();},'primary'));
+      actions.append(button(f.recipient_id===session.user.id?'Recusar':'Cancelar',()=>removeFriend(f),'text-button'));
     }
     $('friends-list').append(row);
   }

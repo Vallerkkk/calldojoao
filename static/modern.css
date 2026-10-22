@@ -22,3 +22,15 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:2px solid 
 @media(max-width:780px){.chat-header{gap:6px;padding-inline:10px}.chat-title h2{letter-spacing:0}.message-form-wrap{padding:8px 8px calc(10px + env(safe-area-inset-bottom))}.message-form{padding:6px;gap:3px;border-radius:16px}.welcome{padding:20px;border-radius:16px}.messages{padding-block:12px}.channel{min-height:44px}.auth-card{border-radius:20px}.voice-chat-header{min-height:60px}.voice-chat-form textarea{font-size:16px}.category-header{padding-top:14px}}
 @media(prefers-reduced-motion:reduce){.channel,.primary,.soft-button{transition:none!important;transform:none!important}}
 body[data-reduce-motion=true] .channel,body[data-reduce-motion=true] .primary,body[data-reduce-motion=true] .soft-button{transition:none!important;transform:none!important}
+
+/* Friends and DMs have independent, bounded action groups. */
+.friend-card{display:flex;flex-wrap:nowrap;align-items:center;gap:12px;min-width:0;min-height:76px}
+.friend-card>.avatar{flex:0 0 40px;width:40px;height:40px;overflow:hidden}.friend-card>.avatar img{width:100%;height:100%;object-fit:cover}
+.friend-info{flex:1 1 0;min-width:0;overflow:hidden}.friend-info strong,.friend-info small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.friend-actions{display:flex;flex:0 0 auto;align-items:center;gap:8px}.friend-actions button{min-height:44px;white-space:nowrap}
+#dm-channels .dm-pinned-row{display:flex;align-items:center;min-width:0;gap:2px}
+#dm-channels .dm-pinned-row>.channel{width:auto;flex:1 1 0;min-width:0;min-height:44px;overflow:hidden}
+#dm-channels .dm-pinned-row>.channel .channel-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500;line-height:1.4}
+#dm-channels .dm-pin{flex:0 0 44px;width:44px;min-width:44px;max-width:44px;min-height:44px;padding:0;display:grid;place-items:center;margin:0;gap:0}
+.add-friend-form input,.add-friend-form button{min-height:44px}.add-friend-form button{flex-shrink:0;white-space:nowrap}
+@media(max-width:780px){#friends-view .chat-header{height:auto;min-height:60px;padding-block:8px}#friends-view .chat-title{flex-wrap:wrap;overflow:visible}#friends-view .friends-tabs{flex-wrap:wrap;gap:4px}.friends-tab{min-height:44px}.friends-list-wrap{padding:16px 12px calc(24px + env(safe-area-inset-bottom))}.friend-card{display:grid;grid-template-columns:40px minmax(0,1fr);gap:10px 12px}.friend-actions{grid-column:1/-1;justify-content:flex-end;flex-wrap:wrap}.friend-actions button{min-height:44px}.add-friend-form{flex-direction:column}.add-friend-form input{width:100%;font-size:16px}.add-friend-form button{width:100%}}

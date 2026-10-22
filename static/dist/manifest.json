@@ -1,8 +1,8 @@
 {
-  "version": "dd16476271f8efc9",
-  "entry": "/static/dist/app-CZM5IZ45.js",
+  "version": "651df434401c635e",
+  "entry": "/static/dist/app-ULAQCGKY.js",
   "files": [
-    "/static/dist/app-CZM5IZ45.js",
+    "/static/dist/app-ULAQCGKY.js",
     "/static/dist/call-layout-41217c9121da3858.css",
     "/static/dist/chunk-admin-controls-PZRQMPK4.js",
     "/static/dist/chunk-admin-diagnostics-O5UZQ5HT.js",
@@ -28,8 +28,8 @@
     "/static/dist/fluency-e8bd643cf9fd04e1.css",
     "/static/dist/identity-6ebc994080d21c0a.css",
     "/static/dist/interface-c30ad38a9a1b3db8.css",
-    "/static/dist/modern-189256ec5a89e55d.css",
-    "/static/dist/polish-8fd968519df3816b.css",
+    "/static/dist/modern-dfbf9772c6bc459c.css",
+    "/static/dist/polish-29b3868020017811.css",
     "/static/dist/social-feed-62c05a9ca6c15537.css",
     "/static/dist/style-12bc4d80368e29aa.css",
     "/static/dist/themes-798ce3001de508c9.css"
@@ -44,11 +44,11 @@
     "/static/community-ux.css": "/static/dist/community-ux-a28b5109c4b7b2bc.css",
     "/static/identity.css": "/static/dist/identity-6ebc994080d21c0a.css",
     "/static/themes.css": "/static/dist/themes-798ce3001de508c9.css",
-    "/static/polish.css": "/static/dist/polish-8fd968519df3816b.css",
-    "/static/modern.css": "/static/dist/modern-189256ec5a89e55d.css"
+    "/static/polish.css": "/static/dist/polish-29b3868020017811.css",
+    "/static/modern.css": "/static/dist/modern-dfbf9772c6bc459c.css"
   },
   "integrity": {
-    "/static/dist/app-CZM5IZ45.js": "e7ede04ff4783af0680c1a403604954400c3f8584f08a81cb09e125eb0e6c7d0",
+    "/static/dist/app-ULAQCGKY.js": "2879ebdd3a7be80e86fa0ae86ae6e7fe29ac95b2d64a5ead503236be547cfbdc",
     "/static/dist/call-layout-41217c9121da3858.css": "41217c9121da385886b24e21b88d59a06c04e575277db89d6c1901b1a99d41da",
     "/static/dist/chunk-admin-controls-PZRQMPK4.js": "33a26d5d098f87e76a30ed76cb87665afe5d9c565aab6fd4cff170d40364ff2e",
     "/static/dist/chunk-admin-diagnostics-O5UZQ5HT.js": "db2508c2c9152fbe631806e53dd148bd67a8b3695a0094caa6145d906b978027",
@@ -74,8 +74,8 @@
     "/static/dist/fluency-e8bd643cf9fd04e1.css": "e8bd643cf9fd04e1f6d96f9f981948f6be5c4f390becdb2db5c2ee41960774ce",
     "/static/dist/identity-6ebc994080d21c0a.css": "6ebc994080d21c0a7762bce8511b194c8789ec236e30410ea87dc9dbc01e0035",
     "/static/dist/interface-c30ad38a9a1b3db8.css": "c30ad38a9a1b3db8298e710ba83d5285f4859f9a0ba254d1407d34971e5cb4eb",
-    "/static/dist/modern-189256ec5a89e55d.css": "189256ec5a89e55d42434a3ddc5d004df1873080d73c1d553ecd2404e0428090",
-    "/static/dist/polish-8fd968519df3816b.css": "8fd968519df3816be3e7d3e6b758d57c389f277a947b99ecef15630070d19a30",
+    "/static/dist/modern-dfbf9772c6bc459c.css": "dfbf9772c6bc459cf02777db2a4552b159ad6db43b2be1f7969b7d686c52a25a",
+    "/static/dist/polish-29b3868020017811.css": "29b38680200178114a4c2c9fe18dad11059e702a28d0df2c223934401a6005d8",
     "/static/dist/social-feed-62c05a9ca6c15537.css": "62c05a9ca6c15537bf253125c4c084de10a50bfc9bc981f016b493158cb66c53",
     "/static/dist/style-12bc4d80368e29aa.css": "12bc4d80368e29aa66ecaa841d8d64987a5ac961ef98b0fd661ea0ad36361951",
     "/static/dist/themes-798ce3001de508c9.css": "798ce3001de508c9b84f827c480f6fb7e7a93657fa4b13d8e368392a43386def"

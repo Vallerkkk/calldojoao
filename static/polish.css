@@ -812,9 +812,10 @@ button:active:not(:disabled){transform:scale(.97)}
 .friends-tab.add-friend{background:rgba(61,220,132,.12);color:#8bf0b6;border:1px solid rgba(61,220,132,.22)}
 .friends-tab.add-friend:hover{background:rgba(61,220,132,.2);color:#b7ffd5}
 .friends-list-wrap{
-  padding:22px max(20px,calc((100% - 900px)/2)) 40px;
+  width:100%;max-width:960px;align-self:center;min-width:0;min-height:0;
+  padding:22px clamp(16px,3vw,32px) 40px;
   overflow:auto;
-  height:100%;
+  height:auto;
 }
 .add-friend-form{gap:8px;padding:0 0 18px}
 .add-friend-form input{
