@@ -9,6 +9,7 @@ if not exist ".git" (
     echo Inicializando repositorio Git...
     git init
     git branch -M main
+<<<<<<< HEAD
     git remote add origin https://github.com/Vallerkkk/calldojoao.git 2>nul
 )
 
@@ -36,10 +37,32 @@ if errorlevel 1 (
     echo.
     echo Forcando atualizacao completa da branch main no GitHub...
     git push -u origin main --force
+=======
+    git remote add origin https://github.com/Vallerkkk/calldojoao.git
+)
+
+echo Adicionando arquivos modificados...
+git add -A
+
+echo Criando commit...
+git commit -m "feat: transcricao ao vivo da call e assistente de voz LulaDroid com Gemini e Puter TTS"
+
+echo Enviando para o GitHub...
+git push -u origin main
+if errorlevel 1 (
+    echo.
+    echo Tentando enviar na branch master...
+    git push -u origin master
+>>>>>>> b5a39d3b668be49dd09253e2141ca6f5c279f435
 )
 
 echo.
 echo ============================================================
+<<<<<<< HEAD
 echo   Concluido! Verifique em: https://github.com/Vallerkkk/calldojoao
+=======
+echo   Concluido! Verifique seu repositorio no GitHub:
+echo   https://github.com/Vallerkkk/calldojoao
+>>>>>>> b5a39d3b668be49dd09253e2141ca6f5c279f435
 echo ============================================================
 pause

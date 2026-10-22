@@ -1,6 +1,9 @@
 from uuid import UUID
 import os
+<<<<<<< HEAD
 import json
+=======
+>>>>>>> b5a39d3b668be49dd09253e2141ca6f5c279f435
 import httpx
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
@@ -13,9 +16,13 @@ DEFAULT_GEMINI_PROJECT = '735777445484'
 
 class LulaDroidQuery(BaseModel):
     model_config = ConfigDict(extra='ignore')
+<<<<<<< HEAD
     prompt: str | None = None
     audio_base64: str | None = None
     mime_type: str | None = 'audio/webm'
+=======
+    prompt: str
+>>>>>>> b5a39d3b668be49dd09253e2141ca6f5c279f435
     speaker: str | None = None
     channel_id: str | None = None
 
@@ -62,10 +69,15 @@ def install(app, current_user, settings, make_token):
     async def analyze_luladroid(body: LulaDroidQuery, identity=Depends(current_user)):
         user, _ = identity
         prompt = (body.prompt or '').strip()
+<<<<<<< HEAD
         audio_b64 = (body.audio_base64 or '').strip()
 
         if not prompt and not audio_b64:
             raise HTTPException(400, 'Forneça um texto ou áudio para o Gemini processar.')
+=======
+        if not prompt:
+            raise HTTPException(400, 'Texto para análise não fornecido.')
+>>>>>>> b5a39d3b668be49dd09253e2141ca6f5c279f435
 
         key = os.getenv('GEMINI_API_KEY', DEFAULT_GEMINI_KEY).strip() or DEFAULT_GEMINI_KEY
         project = os.getenv('GEMINI_PROJECT', DEFAULT_GEMINI_PROJECT).strip() or DEFAULT_GEMINI_PROJECT
@@ -73,8 +85,14 @@ def install(app, current_user, settings, make_token):
         system_instruction = (
             'Você é o LulaDroid, um assistente robô inteligente, carismático e prestativo '
             'em português brasileiro para as chamadas de voz e vídeo do aplicativo Órbita. '
+<<<<<<< HEAD
             'Você realiza a transcrição precisa da fala e responde às dúvidas de forma amigável, direta e concisa '
             '(no máximo 2 ou 3 frases curtas), de modo que sua resposta soe excelente ao ser falada na chamada.'
+=======
+            'Responda à pergunta feita pelo usuário de forma amigável, direta e concisa '
+            '(no máximo 2 ou 3 frases curtas), de modo que sua resposta soe excelente e natural '
+            'ao ser reproduzida por sintetizador de voz (TTS) na chamada.'
+>>>>>>> b5a39d3b668be49dd09253e2141ca6f5c279f435
         )
 
         req_headers = {
@@ -84,6 +102,7 @@ def install(app, current_user, settings, make_token):
         if project:
             req_headers['x-goog-user-project'] = project
 
+<<<<<<< HEAD
         parts = []
         if audio_b64:
             clean_b64 = audio_b64.split(',')[-1]
@@ -108,6 +127,12 @@ def install(app, current_user, settings, make_token):
             'system_instruction': {'parts': [{'text': system_instruction}]},
             'contents': [{'role': 'user', 'parts': parts}],
             'generationConfig': {'temperature': 0.7, 'maxOutputTokens': 400},
+=======
+        payload = {
+            'system_instruction': {'parts': [{'text': system_instruction}]},
+            'contents': [{'role': 'user', 'parts': [{'text': prompt}]}],
+            'generationConfig': {'temperature': 0.7, 'maxOutputTokens': 300},
+>>>>>>> b5a39d3b668be49dd09253e2141ca6f5c279f435
         }
 
         last_error = None
@@ -120,6 +145,7 @@ def install(app, current_user, settings, make_token):
                     data = read_json(response, dict)
                     candidates = data.get('candidates') or []
                     if candidates:
+<<<<<<< HEAD
                         c_parts = candidates[0].get('content', {}).get('parts') or []
                         if c_parts and isinstance(c_parts[0].get('text'), str) and c_parts[0]['text'].strip():
                             raw_out = c_parts[0]['text'].strip()
@@ -146,6 +172,13 @@ def install(app, current_user, settings, make_token):
                             return {
                                 'success': True,
                                 'reply': raw_out,
+=======
+                        parts = candidates[0].get('content', {}).get('parts') or []
+                        if parts and isinstance(parts[0].get('text'), str) and parts[0]['text'].strip():
+                            return {
+                                'success': True,
+                                'reply': parts[0]['text'].strip(),
+>>>>>>> b5a39d3b668be49dd09253e2141ca6f5c279f435
                                 'model': model,
                                 'speaker': body.speaker or (user.get('user_metadata') or {}).get('display_name', 'Participante'),
                             }
@@ -155,6 +188,7 @@ def install(app, current_user, settings, make_token):
                 last_error = str(exc)
 
         fallback_reply = (
+<<<<<<< HEAD
             f"Olá companheiro! LulaDroid na escuta com Gemini. "
             f"Ouvi sua mensagem: '{prompt or 'áudio recebido'}' e estou ativo na chamada!"
         )
@@ -164,6 +198,15 @@ def install(app, current_user, settings, make_token):
             'triggered': False,
             'reply': fallback_reply,
             'model': 'fallback-gemini',
+=======
+            f"Olá companheiro! LulaDroid na escuta. Ouvi sua pergunta sobre '{prompt}'. "
+            'Estou conectado na chamada e pronto para ajudar!'
+        )
+        return {
+            'success': True,
+            'reply': fallback_reply,
+            'model': 'fallback-agent',
+>>>>>>> b5a39d3b668be49dd09253e2141ca6f5c279f435
             'fallback': True,
             'error_detail': last_error,
         }
