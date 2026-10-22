@@ -6,7 +6,6 @@ import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),staticDir=path.join(root,'static'),dist=path.join(staticDir,'dist');
 await mkdir(dist,{recursive:true});
-await build({absWorkingDir:root,entryPoints:['static/call-audio-processor.ts'],outfile:'static/call-audio-processor.js',format:'esm',platform:'browser',target:['chrome110','safari16','firefox115']});
 const hash=data=>createHash('sha256').update(data).digest('hex').slice(0,16);
 const cssMap={};const cssFiles=['style','enhancements','interface','fluency','social-feed','call-layout','community-ux','identity','themes','polish','modern'];
 for(const name of cssFiles){const source=await readFile(path.join(staticDir,name+'.css'));const {code}=transform({filename:name+'.css',code:source,minify:true,targets:{chrome:110<<16,safari:16<<16,firefox:115<<16}});const file=name+'-'+hash(code)+'.css';await writeFile(path.join(dist,file),code);cssMap['/static/'+name+'.css']='/static/dist/'+file;}

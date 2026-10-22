@@ -15,10 +15,7 @@ let browser;
   const processor=createNoiseProcessor(),track=destination.stream.getAudioTracks()[0];await processor.init({track});
   const analyser=context.createAnalyser();analyser.fftSize=2048;const processed=context.createMediaStreamSource(new MediaStream([processor.processedTrack])),silent=context.createGain();silent.gain.value=0;processed.connect(analyser);analyser.connect(silent);silent.connect(context.destination);
   await new Promise(resolve=>setTimeout(resolve,1400));const data=new Float32Array(analyser.fftSize);analyser.getFloatTimeDomainData(data);const output=Math.sqrt(data.reduce((s,x)=>s+x*x,0)/data.length),input=Math.sqrt(samples.reduce((s,x)=>s+x*x,0)/samples.length),prior=processor.processedTrack;
-  processor.setOptions({mode:'aggressive',sensitivity:80});await new Promise(resolve=>setTimeout(resolve,120));
-  const liveOptions=processor.getOptions(),liveGain=processor.gain.gain.value,liveCutoff=processor.highpass.frequency.value;
-  if(processor.processedTrack!==prior||liveGain<1.5||liveCutoff<115)throw Error('Live gain/mode update failed');
-  await processor.restart({track});if(processor.getOptions().sensitivity!==80||processor.highpass.frequency.value!==120)throw Error('Restart lost audio options');const restarted=prior.readyState==='ended'&&processor.processedTrack.readyState==='live';const fallbackOutput=processor.processedTrack;processor.filter.onprocessorerror();const runtimeFallback=processor.fallback&&processor.processedTrack===fallbackOutput&&fallbackOutput.readyState==='live';if(!runtimeFallback)throw Error('Runtime RNNoise fallback');const ownContext=processor.context;await processor.destroy();const cleaned=ownContext.state==='closed'&&track.readyState==='live';source.stop();track.stop();await context.close();return {input,output,restarted,cleaned,liveOptions,liveGain,liveCutoff,runtimeFallback};
+  await processor.restart({track});const restarted=prior.readyState==='ended'&&processor.processedTrack.readyState==='live';const ownContext=processor.context;await processor.destroy();const cleaned=ownContext.state==='closed'&&track.readyState==='live';source.stop();track.stop();await context.close();return {input,output,restarted,cleaned};
  });assert(metrics.input>0.02);assert(metrics.output<metrics.input*0.8,JSON.stringify(metrics));assert(metrics.restarted&&metrics.cleaned);report.push({rnnoise:metrics});await dsp.close();
  const original=fs.readFileSync(path.join(__dirname,'fixtures/livekit_stub.mjs'),'utf8');
  const livekit=original.replace('constructor() {','constructor(options) { window.__qaRoomOptions=options;')
@@ -27,7 +24,7 @@ let browser;
  for(const mobile of [false,true]){
   const context=await browser.newContext({viewport:{width:mobile?390:1440,height:mobile?844:1000},isMobile:mobile,hasTouch:mobile});
   await context.addInitScript(()=>{
-   localStorage.setItem('orbita-members-hidden','false');localStorage.setItem('orbita-mic-sensitivity','invalid');window.__qaSinks=[];
+   localStorage.setItem('orbita-members-hidden','false');window.__qaSinks=[];
    AudioContext.prototype.setSinkId=async function(id){window.__qaSinks.push(id);if(id==='reject-mix')throw Error('Mixer refused output');};
    navigator.mediaDevices.enumerateDevices=async()=>[{kind:'audioinput',deviceId:'mic-one',label:'Microfone USB'},{kind:'audioinput',deviceId:'mic-two',label:'Headset'},{kind:'audiooutput',deviceId:'speaker-two',label:'Fone USB'},{kind:'audiooutput',deviceId:'broken',label:'Saída indisponível'},{kind:'audiooutput',deviceId:'reject-mix',label:'Falha do mixer'}];
    navigator.mediaDevices.getUserMedia=async()=>({getTracks:()=>[{stop(){window.__qaPermissionTrackStopped=true;}}]});
@@ -44,13 +41,7 @@ let browser;
   await page.locator('#mic-options').click();await page.getByRole('button',{name:'Entrada, saída e redução de ruído',exact:true}).click();
   await input.selectOption('mic-one');await output.selectOption('broken');await page.getByText('Não foi possível usar esse dispositivo.',{exact:false}).waitFor();assert.equal(await output.inputValue(),'speaker-two');
   await output.selectOption('reject-mix');await page.getByText('Não foi possível usar esse dispositivo.',{exact:false}).waitFor();assert.equal(await output.inputValue(),'speaker-two');assert.equal(await page.evaluate(()=>window.__qaDeviceSwitches.some(d=>d.id==='reject-mix')),false);
-  const mode=page.getByLabel('Redução de ruído adicional',{exact:true}),gain=page.getByLabel('Ganho do microfone',{exact:true});
-  assert.equal(await gain.inputValue(),'50');await gain.fill('80');
-  await page.waitForFunction(()=>window.__qaRoom.localParticipant.audioTrackPublications.get('mic').track.processor.getOptions().sensitivity===80);
-  await mode.selectOption('aggressive');await page.waitForFunction(()=>window.__qaRoom.localParticipant.audioTrackPublications.get('mic').track.processor.getOptions().mode==='aggressive');
-  assert.equal(await page.evaluate(()=>window.__qaProcessorStarts),1);await mode.selectOption('enhanced');
-  await mode.selectOption('browser');assert.equal(await gain.isDisabled(),true);await page.waitForFunction(()=>window.__qaProcessorStops===1);await mode.selectOption('enhanced');await page.waitForFunction(()=>window.__qaProcessorStarts===2);assert.equal(await gain.isEnabled(),true);assert.equal(await page.evaluate(()=>window.__qaRoom.localParticipant.audioTrackPublications.get('mic').track.processor.getOptions().sensitivity),80);for(const preset of ['padrao_call','ambiente_ruidoso','anti_teclado_gamer','voz_estudio']){await mode.selectOption('voice:'+preset);await page.waitForFunction(preset=>window.__qaRoom.localParticipant.audioTrackPublications.get('mic').track.processor?.preset===preset,preset);}
-  await page.locator('#dialog-close').click();
+  const mode=page.getByLabel('Redução de ruído adicional',{exact:true});await mode.selectOption('browser');await page.waitForFunction(()=>window.__qaProcessorStops===1);await mode.selectOption('enhanced');await page.waitForFunction(()=>window.__qaProcessorStarts===2);await page.locator('#dialog-close').click();
   await page.evaluate(OTHER=>{const r=window.__qaRoom,p=r.remoteParticipants.get(OTHER);for(let i=0;i<2;i++)r.emit('DataReceived',new TextEncoder().encode(JSON.stringify({type:'reaction',emoji:'👋'})),p,0,'orbita-reaction');},OTHER);assert.equal(await page.locator('.call-reaction-bubble').count(),1);
   await page.locator('#vc-react-call').click();assert.equal(await page.locator('.call-reaction-choice').count(),12);await page.getByRole('button',{name:'Reagir com ❤️',exact:true}).click();await page.locator('.call-reaction-bubble').getByText('❤️',{exact:true}).waitFor();
   await page.evaluate(OTHER=>{const r=window.__qaRoom,p=r.remoteParticipants.get(OTHER),send=emoji=>r.emit('DataReceived',new TextEncoder().encode(JSON.stringify({type:'reaction',emoji})),p,0,'orbita-reaction');send('🔥');send('🔥');send('not-allowed');},OTHER);

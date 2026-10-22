@@ -1,0 +1,51 @@
+INTEGRAÇÃO LULA DROID — Grok LLM + Memória Adaptável
+=====================================================
+
+1. COMANDO DE ATIVAÇÃO
+   Nome da IA: Lula Droid
+   Comando: "Ei Lula Droid" + desejo ou pesquisa
+
+   Exemplos:
+   - "Ei Lula Droid, o que você acha disso?"
+   - "Ei Lula Droid, pesquise as melhores práticas de STT em tempo real."
+   - "Ei Lula Droid, resuma o que foi falado nos últimos minutos."
+
+   Variações aceitas: "Ei LulaDroid", "Oi Lula Droid", "Olá Lula Droid"
+
+2. INTEGRAÇÃO COM GROK
+   - O módulo ai_call.py está preparado para usar LLM_PROVIDER="grok".
+   - Em produção: substituir a função generate_opinion() por chamada à API do Grok
+     (ou endpoint compatível) passando o contexto da chamada + memória.
+   - A detecção de "pesquisa" ativa o modo de busca (quando o Grok tiver tool de search).
+
+3. MEMÓRIA ADAPTÁVEL
+   - Aprende preferências e fatos das conversas (ex.: "prefiro respostas curtas").
+   - Armazena as últimas interações relevantes.
+   - Usa a memória nas respostas seguintes para personalizar o tom.
+   - Em produção: persistir no Supabase em vez de arquivo local.
+
+4. VOZ PADRÃO (sugestões)
+   Escolha uma das variações abaixo para ser a voz padrão da Lula Droid:
+
+   A) Voz feminina clara e amigável (recomendada para assistente)
+   B) Voz masculina calma e profissional
+   C) Voz neutra jovem e dinâmica
+   D) Voz mais grave e autoritária (estilo "droid")
+
+   Para gerar os áudios de amostra, use o conector Voice do Grok com os textos:
+   - "Olá, eu sou a Lula Droid. Como posso ajudar nesta chamada?"
+   - "Analisei o que foi dito. Minha opinião é que o ponto está coerente."
+   - "Pesquisando agora as melhores fontes sobre o assunto."
+
+5. ARQUIVOS ALTERADOS / CRIADOS
+   - jesus/ai_call.py          (lógica principal + wake word + memória)
+   - jesus/test_lula_droid.py  (teste do comando e memória)
+   - Endpoints já existentes em app.py continuam válidos.
+
+6. PRÓXIMOS PASSOS
+   - Conectar API real do Grok no generate_opinion().
+   - Integrar STT real (Deepgram) no process_audio_chunk().
+   - Adicionar TTS com a voz escolhida para a IA responder em áudio na chamada.
+   - Persistir memória no banco.
+
+Teste executado com sucesso: wake word detectado, resposta gerada e memória atualizada.

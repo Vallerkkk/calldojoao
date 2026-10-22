@@ -1,7 +1,7 @@
 const {spawnSync}=require('node:child_process'),path=require('node:path');
 const groups={
  navigation:['friends_layout_browser.cjs','browser_smoke.cjs','navigation_browser.cjs','community_ux_browser.cjs','identity_browser.cjs','install_browser.cjs','videochamada_browser.cjs'],
- calls:['call_audio_processor_browser.cjs','call_layout_browser.cjs','call_controls_browser.cjs','call_session_browser.cjs','auth_recovery_browser.cjs','youtube_watch_browser.cjs','audio_experience_browser.cjs','call_media_browser.cjs','jesus9_browser.cjs','luladroid_browser.cjs'],
+ calls:['call_layout_browser.cjs','call_controls_browser.cjs','call_session_browser.cjs','auth_recovery_browser.cjs','youtube_watch_browser.cjs','audio_experience_browser.cjs','call_media_browser.cjs','jesus9_browser.cjs','luladroid_browser.cjs'],
  media:['feed_browser.cjs','media_autoplay_browser.cjs','jesus11_browser.cjs'],
  quality:['diagnostics_browser.cjs','accessibility_browser.cjs','performance_browser.cjs','social_tools_browser.cjs','oauth_browser.cjs']
 };

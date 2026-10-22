@@ -13,11 +13,3 @@ supabase/.temp/
 
 static/dist/meta.json
 npm-debug.log
-
-.env.*
-!.env.example
-*.local
-lula_droid_test_log.json
-
-# Pacotes antigos do projeto pertencem a Releases, não aos fontes.
-/orbita-projeto-*.zip
