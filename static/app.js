@@ -427,9 +427,23 @@ async function sendMessage(record) {
   record.status = 'sending'; record.error = ''; record.observedId = null;
   pendingSends.add(record.key); updateComposer(); if (draftKey(selected) === record.key && !home) renderMessages(lastViewport?.atBottom);
   try {
-    const {data, error} = await requestWithDeadline(db.from(record.target.private ? 'direct_messages' : 'messages')
-      .insert({[scopeKey(record.target)]: record.target.id, author_id: record.user, content: record.content, reply_to: record.reply})
-      .select(messageFields).single(), {timeout: 30000});
+    // Renova a sessão antes de escrever: tokens expirados são a causa mais comum
+    // de leitura funcionar (cache) e o envio falhar.
+    await authRecovery.get(record.user);
+    const table = record.target.private ? 'direct_messages' : 'messages';
+    const scope = scopeKey(record.target);
+    // Só envia reply_to quando há resposta. Colunas opcionais com grant ausente
+    // não podem bloquear uma mensagem normal.
+    const payload = {[scope]: record.target.id, author_id: record.user, content: record.content};
+    if (record.reply) payload.reply_to = record.reply;
+    const query = () => db.from(table).insert(payload).select(messageFields).single();
+    let {data, error} = await requestWithDeadline(query(), {timeout: 30000});
+    // Banco antigo sem a migração de reply_to: reenvia sem a coluna opcional.
+    if (error && record.reply && (error.code === 'PGRST204' || error.code === '42703' || error.code === '42501')) {
+      delete payload.reply_to;
+      ({data, error} = await requestWithDeadline(query(), {timeout: 30000}));
+      if (!error) toast('Mensagem enviada sem a citação: o banco ainda não tem a coluna de resposta.');
+    }
     if (error) throw error;
     completeMessage(record, data);
   } catch (error) {

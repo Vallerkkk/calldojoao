@@ -1,5 +1,5 @@
-import {requestWithDeadline} from './chat-state.js';
 import {createNoiseProcessor} from './noise-processor.js';
+import {createCallAudioProcessor} from './call-audio-adapter.js';
 
 export function initAudioControls(ctx){
   const {el,button}=ctx,read=kind=>localStorage.getItem('orbita-audio-'+kind)||'',tracks=new WeakMap();
@@ -13,6 +13,8 @@ export function initAudioControls(ctx){
     if(kind==='audiooutput'){const audio=mixes.get(room);if(audio?.setSinkId)await audio.setSinkId(value||'');}
     const ok=await room.switchActiveDevice(kind,value||'default');if(ok===false)throw Error('Dispositivo indisponível');
   }
+  const selection=()=>localStorage.getItem('orbita-noise-mode')||'enhanced';
+  const notifyFallback=()=>{if(!warned){warned=true;ctx.toast('O filtro adicional não está disponível agora. A supressão de ruído do navegador continua ativa.');}};
   const enhanced=()=>ctx.noise()&&localStorage.getItem('orbita-noise-mode')!=='browser';
   async function process(track,room){
     if(!track||track.source!=='microphone'||typeof track.setProcessor!=='function')return;
@@ -20,13 +22,17 @@ export function initAudioControls(ctx){
     const record=prior||{};tracks.set(track,record);
     record.pending=(async()=>{do{record.again=false;
       if(!enhanced()){if(record.processor){await track.stopProcessor();record.processor=null;}continue;}
-      if(record.processor)continue;
-      const processor=createNoiseProcessor();
+      const mode=selection();
+      if(record.processor&&record.mode===mode)continue;
+      if(record.processor){await track.stopProcessor();record.processor=null;}
+      if(ctx.room()!==room)return;
+      const processor=mode.startsWith('voice:')?createCallAudioProcessor(mode.slice(6),notifyFallback):createNoiseProcessor();
       try{
-        await requestWithDeadline(()=>track.setProcessor(processor),{timeout:12000});
+        // Await the actual operation: a timeout cannot cancel LiveKit setProcessor.
+        await track.setProcessor(processor);
         if(ctx.room()!==room){await track.stopProcessor();return;}
-        record.processor=processor;
-      }catch{await processor.destroy();if(!warned&&ctx.room()===room){warned=true;ctx.toast('O filtro adicional não está disponível agora. A supressão de ruído do navegador continua ativa.');}}
+        record.processor=processor;record.mode=mode;
+      }catch{if(track.getProcessor?.()===processor)await track.stopProcessor().catch(()=>{});await processor.destroy();if(!warned&&ctx.room()===room){warned=true;ctx.toast('O filtro adicional não está disponível agora. A supressão de ruído do navegador continua ativa.');}}
       }while(record.again&&ctx.room()===room);
     })().finally(()=>{record.pending=null;});return record.pending;
   }
@@ -42,8 +48,9 @@ export function initAudioControls(ctx){
     const box=el('section','audio-settings');box.append(el('h3','','Entrada e saída de áudio'),el('p','muted','As alterações abaixo são aplicadas imediatamente neste aparelho.'));
     const input=el('select'),output=el('select'),mode=el('select'),status=el('p','muted');
     for(const [node,label] of [[input,'Dispositivo de entrada (microfone)'],[output,'Dispositivo de saída (fone ou alto-falante)'],[mode,'Redução de ruído adicional']]){const field=el('label','field',label);node.setAttribute('aria-label',label);field.append(node);box.append(field);}
-    mode.append(new Option('Aprimorada · RNNoise (gratuita e local)','enhanced'),new Option('Somente a supressão do navegador','browser'));mode.value=localStorage.getItem('orbita-noise-mode')||'enhanced';
-    const setStatus=()=>status.textContent=!ctx.noise()?'Ative Supressão de ruído e salve o perfil para filtrar o microfone.':mode.value==='enhanced'?'Filtro de voz local com redução de ruídos contínuos e graves. Em caso de incompatibilidade, usa o filtro do navegador.':'Usando a redução de ruído do navegador.';
+    mode.append(new Option('Aprimorada · RNNoise (gratuita e local)','enhanced'),new Option('Somente a supressão do navegador','browser'));
+    for(const [key,label] of [['padrao_call','Voz · padrão de chamada'],['ambiente_ruidoso','Voz · ambiente ruidoso'],['anti_teclado_gamer','Voz · teclado'],['voz_estudio','Voz · estúdio']])mode.append(new Option(label,'voice:'+key));mode.value=localStorage.getItem('orbita-noise-mode')||'enhanced';
+    const setStatus=()=>status.textContent=!ctx.noise()?'Ative Supressão de ruído e salve o perfil para filtrar o microfone.':mode.value!=='browser'?'Filtro de voz local com redução de ruídos contínuos e graves. Os perfis de voz podem atenuar falas baixas; escolha outro se necessário. Em caso de incompatibilidade, usa o filtro do navegador.':'Usando a redução de ruído do navegador.';
     mode.onchange=async()=>{mode.disabled=true;localStorage.setItem('orbita-noise-mode',mode.value);try{await sync();setStatus();}catch{ctx.toast('Não foi possível atualizar o filtro. Tente novamente.');}finally{mode.disabled=false;}};
     async function refresh(){
       try{const devices=await navigator.mediaDevices?.enumerateDevices()||[];if(!box.isConnected)return;
