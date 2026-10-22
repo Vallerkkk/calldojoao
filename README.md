@@ -1,0 +1,72 @@
+# Órbita
+
+Aplicação de comunidade com mensagens em tempo real, lista de amigos, conversas privadas, chamadas de áudio e vídeo, compartilhamento de tela, redução de ruído no microfone e player de áudio compartilhado.
+
+## Serviços
+
+- Supabase Auth, Postgres, Realtime e Storage privado para mensagens, perfis e arquivos.
+- LiveKit Cloud para chamadas de voz, vídeo e compartilhamento de tela.
+- Render para hospedar o servidor Python e entregar a interface.
+
+Os arquivos ficam em um bucket privado do Supabase e respeitam o acesso ao canal ou à conversa privada. O limite do Órbita é 25 MB por arquivo. No plano Free, o armazenamento total é limitado pela cota atual do Supabase.
+
+## Publicação
+
+O Render publica a branch `main` usando `render.yaml`. Configure no Render as variáveis `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `LIVEKIT_URL`, `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET`. Não publique o arquivo `.env` nem use chaves secretas no navegador.
+
+Para instalar ou atualizar o esquema em um projeto Supabase novo, execute `supabase.sql`. Para um projeto existente, aplique as migrações em `migrations/` na ordem indicada pelos nomes. As credenciais e chaves secretas devem ficar nas variáveis de ambiente do Render.
+
+## Desenvolvimento local
+
+Copie `.env.example` para `.env`, configure as variáveis e execute `iniciar_orbita.bat`. Os testes do servidor podem ser executados com `python -m unittest discover -s tests -v`.
+
+A permissão de microfone, câmera e compartilhamento de tela é solicitada pelo navegador. Para transmitir áudio da tela, selecione uma aba ou janela compatível e marque a opção de compartilhar áudio oferecida pelo próprio navegador.
+## Organização dos fontes
+
+A interface utilizada pelo servidor fica em `static/index.html`. O servidor inicia por `app:app`. O esquema principal fica em `supabase.sql`, e as alterações incrementais em `migrations/`. O aplicativo Windows e o atualizador ficam em `desktop/`. As pastas `tests/`, `.github/` e os lockfiles são necessários para validação e publicação.
+
+O arquivo `.env` e o ambiente `.venv/` são locais e não devem ser enviados ao GitHub ou Render.
+
+
+## Feed geral da Órbita
+
+O ícone ◈ da barra lateral abre o feed de todos os usuários autenticados. Ele tem abas Explorar, Seguindo, Salvos, Pessoas e Notificações. Publicações aceitam 280 caracteres e até quatro imagens, GIFs ou vídeos. Imagens são comprimidas no dispositivo; limites por arquivo: 2 MB para imagem/GIF e 25 MB para vídeo. O espaço do bucket privado `orbita-feed` compartilha a cota do projeto Supabase existente.
+
+Inclui respostas em conversa, citações, republicações, curtidas, favoritos privados, seguir/deixar de seguir, busca por texto/pessoas, hashtags, menções clicáveis, links de publicação, edição e exclusão com confirmação. Os perfis usam a conta, avatar, banner e biografia existentes. Colar imagens e arrastar arquivos funciona no compositor. Chamadas continuam conectadas ao navegar no feed. Novas publicações aparecem por um aviso do Realtime, preservando a posição de leitura.
+
+Bloqueios escondem publicações nas duas direções; denúncias são privadas e administradores/criadores do site podem revisá-las e apagar publicações. Anexos usam URLs assinadas de cinco minutos. Notificações mostram as últimas 50 curtidas, republicações, respostas, citações e novos seguidores; são consultadas ao abrir a aba, não enviadas como push. A aba Seguindo ordena publicações pela data original e inclui republicações das contas seguidas.
+
+As duas migrações `supabase/migrations/*_social_feed*.sql` precisam estar aplicadas antes de publicar o frontend. Foram aplicadas neste projeto pela integração do Supabase. Elas só adicionam o feed e seu bucket, sem alterar tabelas de chat. Não é necessária nova chave nem assinatura de serviço. Os limites dos planos gratuitos existentes continuam valendo.
+
+Validação: `tests/feed_browser.cjs` cobre PC e celular com uma conta simulada; `tests/social_feed_access.sql` valida RLS, mídia e notificações com dados temporários, terminando em ROLLBACK. Os testes de navegador usam as mesmas dependências locais dos demais testes e o endereço ORBITA_TEST_URL (padrão http://127.0.0.1:8766/).
+
+
+## Ouvir juntos com vídeos do YouTube
+
+Entre em uma chamada, abra Ouvir juntos e cole um link do YouTube. São aceitos links normais, curtos, Shorts, transmissões /live/ e YouTube Music, inclusive com tempo inicial no link. O primeiro orador a selecionar um vídeo controla a reprodução; Reproduzir, Pausar e mudanças de posição são sincronizados pela conexão LiveKit já existente. Quem chega depois recebe o vídeo e a posição atuais. Quando o anfitrião sai, o controle passa para um participante que pode transmitir.
+
+Cada participante pode precisar tocar em Reproduzir áudio aqui devido às regras de reprodução automática do navegador/celular. Não há download nem retransmissão de arquivos do YouTube: cada dispositivo usa o player oficial incorporado. Vídeos privados, removidos ou com incorporação bloqueada pelo autor não funcionam no player; o painel mostra o motivo e oferece Abrir vídeo no YouTube. Não é necessária chave da YouTube Data API nem serviço pago.
+
+A política Referrer-Policy envia somente a origem em solicitações externas HTTPS, permitindo ao YouTube identificar o site sem transmitir o caminho ou os parâmetros da página. A validação de inicialização usa o painel como referência porque a API substitui o elemento original por um iframe. Testes: tests/youtube-links.test.mjs e tests/youtube_watch_browser.cjs, incluindo dois participantes, PC/celular, troca de vídeo, chegada tardia, pausa, erros, nova tentativa, transferência do controle e saída da chamada.
+
+
+## Áudio separado e câmera do celular
+
+Cada participante remoto tem dois controles de volume: Microfone e Transmissão (áudio do compartilhamento de tela). Os níveis de 0 a 100% ficam salvos neste navegador/dispositivo e são reaplicados quando chega uma nova faixa ou a conexão se recupera. O botão de ensurdecer zera ambos temporariamente e restaura os níveis escolhidos. O nível anterior por usuário foi preservado como volume do microfone; a transmissão começa com 100%.
+
+A recepção usa o controle de volume por faixa do LiveKit e Web Audio quando disponível, inclusive para permitir ajuste em navegadores móveis que limitam o volume do elemento HTML. O áudio da transmissão precisa ser enviado por quem está compartilhando a tela; o controle não cria áudio quando a transmissão não o inclui.
+
+A escolha Frontal/Traseira fica na seta ao lado do botão da câmera (Opções de câmera). É possível escolher com o vídeo desligado, sem abrir a câmera, ou alternar durante a chamada. A preferência é salva no dispositivo; a prévia local frontal é espelhada, e a traseira não. Se a troca falhar, o aplicativo tenta restaurar a câmera anterior. O recurso depende das câmeras e permissões disponíveis no navegador/aparelho.
+
+Validação automatizada: tests/call_controls_browser.cjs cobre volumes independentes, zero, recuperação ao reconectar, ensurdecer/restaurar, preferências anteriores, foco, escolha/troca de câmera, recuperação de falha e ligar novamente com outra câmera. Os dispositivos e faixas são simulados; é recomendável verificar a troca também em um aparelho físico com duas câmeras.
+
+
+## Grade e controles das chamadas
+
+As chamadas usam um palco preto com grade adaptativa, nomes sobrepostos e contorno verde de quem está falando. Cada pessoa ocupa um quadro: ao ativar a câmera, o vídeo substitui o avatar. Cada tela compartilhada ocupa um quadro adicional. A grade considera a altura disponível no PC e permite rolagem no celular sem esconder os controles.
+
+A barra inferior reúne microfone, câmera, transmissão, reação, efeitos sonoros, mais opções e desconexão. As setas abrem as opções de áudio, câmera frontal/traseira e inclusão do áudio da tela. O menu de três pontos de cada participante (também acessível com clique direito) permite ajustar separadamente microfone e transmissão. As preferências de áudio continuam locais ao dispositivo.
+
+O canto inferior direito oferece vídeo flutuante e tela cheia da chamada; cada vídeo também tem esses atalhos. O menu superior abre canais e conversas. O botão de conversa mantém a chamada conectada e o atalho “Voltar à chamada” permite retornar, inclusive no celular. Ouvir juntos com YouTube permanece no topo e em Mais opções.
+
+Validação: tests/call_layout_browser.cjs cobre a grade 2×2, ausência de quadros duplicados, nomes acessíveis, menus, microfone, câmera, transmissão, áudio da tela, ensurdecer, reações, efeitos, convites, tela cheia, encaminhamento ao Picture-in-Picture, navegação sem desconexão e limpeza. A suíte roda em tamanhos de PC e celular com usuários e dispositivos simulados. Os testes de ciclo de mídia, volumes/câmeras, YouTube e navegação continuam separados.

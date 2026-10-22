@@ -1,0 +1,17 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),assert=require('node:assert/strict');
+const yaml=require('js-yaml'),asar=require('@electron/asar');
+const root=path.resolve(__dirname,'../..'),dist=path.join(root,'work/desktop-dist'),pkg=JSON.parse(fs.readFileSync(path.join(root,'desktop/package.json'))),version=pkg.version;
+assert(/^\d+\.\d+\.\d+$/.test(version));
+const exe=`Orbita-Setup-${version}-x64.exe`,zip=`Orbita-${version}-x64.zip`,names=[exe,zip,exe+'.blockmap','latest.yml'];
+const info=yaml.load(fs.readFileSync(path.join(dist,'latest.yml'),'utf8'));assert.equal(info.version,version);assert.equal(info.path,exe);assert.equal(info.files.length,1);assert.equal(info.files[0].url,exe);
+const hash=(name,algorithm,encoding='hex')=>crypto.createHash(algorithm).update(fs.readFileSync(path.join(dist,name))).digest(encoding);
+assert.equal(info.files[0].size,fs.statSync(path.join(dist,exe)).size);assert.equal(info.files[0].sha512,hash(exe,'sha512','base64'));assert.equal(info.sha512,info.files[0].sha512);
+assert(fs.statSync(path.join(dist,exe+'.blockmap')).size>100);
+const feed=yaml.load(fs.readFileSync(path.join(dist,'win-unpacked/resources/app-update.yml'),'utf8'));assert.equal(feed.provider,'github');assert.equal(feed.owner,'Vallerkkk');assert.equal(feed.repo,'calldojoao');
+const archive=path.join(dist,'win-unpacked/resources/app.asar');
+for(const name of ['main.cjs','updater.cjs','policy.cjs','picker-preload.cjs','ui/picker.html','ui/picker.js','ui/ui.css'])assert.deepEqual(asar.extractFile(archive,name),fs.readFileSync(path.join(root,'desktop',name)),name);
+assert.equal(JSON.parse(asar.extractFile(archive,'package.json')).version,version);
+assert(asar.listPackage(archive).some(name=>name.replaceAll('\\','/').endsWith('/node_modules/electron-updater/out/main.js')));
+fs.writeFileSync(path.join(dist,'SHA256SUMS.txt'),names.map(name=>hash(name,'sha256')+'  '+name+'\n').join(''));
+console.log(JSON.stringify({version,metadata_hash:true,packaged_source:true,updater_packaged:true,official_feed:true,artifacts:names.length}));

@@ -1,0 +1,2 @@
+-- Keep the token table inaccessible via direct REST reads/writes; validated RPCs are the only interface.
+create policy community_invites_deny_direct on public.community_invites for all to authenticated using (false) with check (false);
