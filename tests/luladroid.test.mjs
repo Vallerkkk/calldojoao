@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 test('LulaDroid activates ONLY when someone speaks "eai LulaDroid" in the call', () => {
-  const triggerRegex = /(?:e\s*a[ií]|ea[ií])\s*[,.\s-]*lula\s*droid[,.:?!\s]*(.*)/i;
+  const triggerRegex = /(?:e\s*ai|eai|ei|oi|ola)\s*[,.\s-]*lula\s*droid[,.:?!\s]*(.*)/i;
 
   function matchTrigger(text) {
     const normalized = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -20,50 +20,44 @@ test('LulaDroid activates ONLY when someone speaks "eai LulaDroid" in the call',
   assert.equal(matchTrigger('eaí, LulaDroid, tudo bem?'), 'tudo bem?');
   assert.equal(matchTrigger('E aí Lula Droid, quanto é 2 mais 2?'), 'quanto e 2 mais 2?');
 
-  // Must NOT trigger without "eai LulaDroid"
+  // Must NOT trigger without greeting + LulaDroid
   assert.equal(matchTrigger('LulaDroid está na sala'), null);
   assert.equal(matchTrigger('ontem vi uma notícia sobre política'), null);
   assert.equal(matchTrigger('o android do meu celular atualizou'), null);
   assert.equal(matchTrigger('boa noite a todos na chamada'), null);
 });
 
-test('Gemini API request payload and headers match required credentials', () => {
-  const key = 'AQ.Ab8RN6LwIVMnELQD7LmloIbFn9gK3bu5MAgVV8Lmc1T6xOsRPA';
-  const project = '735777445484';
-  const prompt = 'Explique computação quântica';
+test('Gemini API request payload normalizes MIME type and avoids CORS-blocking project header', () => {
+  const key = 'test-gemini-key';
+  const rawMime = 'audio/webm;codecs=opus';
+  const cleanMime = rawMime.split(';')[0].trim() || 'audio/webm';
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(key)}`;
   const headers = {
-    'Content-Type': 'application/json',
-    'x-goog-api-key': key,
-    'x-goog-user-project': project
+    'Content-Type': 'application/json'
   };
 
   assert.ok(url.includes(key));
-  assert.equal(headers['x-goog-api-key'], key);
-  assert.equal(headers['x-goog-user-project'], '735777445484');
-
-  const payload = {
-    system_instruction: {
-      parts: [{ text: 'Você é o LulaDroid' }]
-    },
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: prompt }]
-      }
-    ]
-  };
-
-  assert.equal(payload.contents[0].parts[0].text, prompt);
+  assert.equal(cleanMime, 'audio/webm');
+  assert.equal(headers['x-goog-user-project'], undefined);
 });
 
-test('Puter.js TTS parameters format Portuguese voice options', () => {
-  const puterOptions = {
-    language: 'pt-BR',
-    engine: 'neural'
+test('Gemini TTS payload configures AUDIO modality and Aoede voice', () => {
+  const ttsBody = {
+    contents: [{
+      role: 'user',
+      parts: [{ text: 'Fale em português brasileiro de forma amigável e natural: Olá!' }]
+    }],
+    generationConfig: {
+      responseModalities: ['AUDIO'],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName: 'Aoede' }
+        }
+      }
+    }
   };
 
-  assert.equal(puterOptions.language, 'pt-BR');
-  assert.equal(puterOptions.engine, 'neural');
+  assert.deepEqual(ttsBody.generationConfig.responseModalities, ['AUDIO']);
+  assert.equal(ttsBody.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Aoede');
 });

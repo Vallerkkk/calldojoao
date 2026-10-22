@@ -1,4 +1,4 @@
-import { initCallLayout } from './call-layout.js?v=call-layout-20261021-3';
+import { initCallLayout } from './call-layout.js?v=luladroid-20261022-2';
 import { initSocialFeed } from './social-feed.js?v=feed-20261020-2';
 import { compressImage, relativeTime, safeLink, stickerNames } from './media-utils.js?v=fluency-20261020-2';
 import { initEnhancements } from './enhancements.js?v=devices-20261020-1';
@@ -6,7 +6,7 @@ import { DraftStore, serialToggle } from './runtime-utils.js?v=fluency-20261020-
 import { ConversationCache, MessageOutbox, conversationKey, requestWithDeadline } from './chat-state.js?v=fluency-20261020-2';
 import { reconcileNodes, reserveImage, focusElement } from './dom-utils.js?v=fluency-20261020-2';
 import { choosePrivateCall } from './private-call-menu.js?v=videochamada-20261020-1';
-import { initCallTranscription } from './call-transcription.js?v=luladroid-20261021-1';
+import { initCallTranscription } from './call-transcription.js?v=luladroid-20261022-2';
 let enhancements, feed, callLayout, callTranscription;
 const drafts = new DraftStore(), pendingSends = new Set();
 const draftKey = target => session && target ? session.user.id + ':' + (target.private ? 'dm:' : 'channel:') + target.id : '';
@@ -632,9 +632,10 @@ $('join-call').onclick = async () => {
     await connected.connect(result.url, result.token);
     if (!session || room !== connected) { await connected.disconnect(); return; }
     try { await connected.startAudio(); } catch { toast('A chamada entrou. Toque na tela para liberar o áudio neste navegador.'); }
-    enhancements.connected(connected,RoomEvent,result);callTranscription?.connected(connected);
+    enhancements.connected(connected,RoomEvent,result);
     try { if(result.canPublish!==false)await connected.localParticipant.setMicrophoneEnabled(!pushToTalk&&!deafened, audioCapture()); }
     catch (error) { toast('Você entrou sem microfone. ' + errorText(error)); }
+    callTranscription?.connected(connected);
   } catch (error) { await leaveCall(); toast(errorText(error)); }
   finally { joining = false; updateCallUI(); }
 };
