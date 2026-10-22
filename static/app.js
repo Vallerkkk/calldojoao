@@ -1,3 +1,4 @@
+import {createAuthRecovery,isInvalidSessionError} from './auth-recovery.js';
 import './ui-polish.js';
 import {initSocialLogin} from './social-login.js';
 import {initNavigationMotion} from './navigation-motion.js';
@@ -113,6 +114,12 @@ $('auth-form').onsubmit = async event => {
 
 let sessionTransition=0,sessionReady=false,sessionInitializing=false;
 async function showSession(next) {
+  if(!next){
+    $('auth-view').hidden=false;$('app-view').hidden=true;$('app-dialog').close();closeMobileMenu();
+    document.body.classList.remove('big-picture','call-focus','call-navigation-open');document.querySelector('.bp-bar')?.remove();
+    if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});
+    setEntryBusy(false);
+  }
   if(session?.user.id===next?.user.id&&next&&(sessionReady||sessionInitializing)){session=next;return;}
   cancelCallJoin();
   feed?.sessionChanged();
@@ -623,11 +630,10 @@ $('join-call').onclick = async () => {
   const current=()=>callJoin===operation&&!operation.signal.aborted&&session?.user.id===account&&!shuttingDown;
   joining = true; updateCallUI(); let connected;
   try {
-    const {data: {session: fresh}} = await db.auth.getSession();
+    await authRecovery.get(account);
     if(!current())return;
-    if (!fresh || fresh.user.id!==account) throw Error('Sua sessão expirou. Entre novamente.');
     const result=await requestWithDeadline(async signal=>{
-      const response=await fetch(`/api/${target.private?'conversations':'channels'}/${target.id}/join`,{method:'POST',headers:{Authorization:`Bearer ${fresh.access_token}`},signal});
+      const response=await apiFetch(`/api/${target.private?'conversations':'channels'}/${target.id}/join`,{method:'POST',signal});
       const data=await response.json().catch(()=>{throw Error('O servidor não respondeu corretamente. Tente novamente.');});
       if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'Não foi possível entrar.');return data;
     },{signal:operation.signal,timeout:30000});
@@ -762,7 +768,7 @@ async function boot() {
     // Supabase calls run outside the Auth callback to avoid locking the session.
     db.auth.onAuthStateChange((_event,next)=>{setTimeout(()=>showSession(next).catch(error=>toast(errorText(error))),0);});}
     await socialLogin.ready(db,config);
-    const {data, error} = await requestWithDeadline(()=>db.auth.getSession(),{timeout:30000}); if (error) throw error;
+    const {data, error} = await requestWithDeadline(()=>db.auth.getSession(),{timeout:30000}); if(error){if(isInvalidSessionError(error)){await showSession(null);$('auth-status').textContent='Sua sessão expirou. Entre novamente para continuar.';$('auth-submit').disabled=false;return;}throw error;}
     await showSession(data.session);$('auth-submit').disabled=false;
   }catch(error){$('auth-status').textContent='Não foi possível conectar. '+errorText(error);$('auth-submit').disabled=true;startupRetry.hidden=false;}finally{booting=false;if(!sessionInitializing)setEntryBusy(false);}
 }
@@ -791,9 +797,11 @@ const person = id => peopleById.get(id) || {id,display_name:'Participante',usern
 function button(label, action, css = 'soft-button') { const b=el('button',css,label);b.type='button';if(css.split(' ').includes('feature-options')&&label)b.setAttribute('aria-label',label);b.onclick=()=>{if(b.disabled)return;b.disabled=true;return Promise.resolve().then(()=>typeof action==='function'?action():undefined).catch(e=>toast(errorText(e))).finally(()=>{b.disabled=false;});};return b; }
 async function checked(query) { const result=await query; if(result.error) throw result.error; return result.data; }
 async function apiFetch(path, options={}) {
-  const {data:{session:fresh}}=await db.auth.getSession();
-  if(!fresh) throw Error('Entre novamente na sua conta.');
-  const response=await requestWithDeadline(signal=>fetch(path,{...options,signal,headers:{...options.headers,Authorization:`Bearer ${fresh.access_token}`}}),{signal:options.signal,timeout:30000});
+  const account=session?.user.id;if(!account)throw Error('Entre novamente na sua conta.');
+  let fresh=await authRecovery.get(account);
+  const send=()=>requestWithDeadline(signal=>fetch(path,{...options,signal,headers:{...options.headers,Authorization:`Bearer ${fresh.access_token}`}}),{signal:options.signal,timeout:30000});
+  let response=await send();
+  if(response.status===401){fresh=await authRecovery.refresh(account);if(session?.user.id!==account)throw new DOMException('A conta mudou.','AbortError');response=await send();if(response.status===401)await authRecovery.expire(account);}
   if(!response.ok) {const error=await response.json().catch(()=>({}));throw Error(error.detail||'Não foi possível concluir.');}
   return response;
 }
@@ -1678,6 +1686,7 @@ $('voice-stage').addEventListener('keydown',event=>{if(['Enter',' '].includes(ev
 // ===== Big Picture mode (Steam-style) =====
 function toggleBigPicture(force) {
   const on = force !== undefined ? force : !document.body.classList.contains('big-picture');
+  if(on&&!session)return;
   document.body.classList.toggle('big-picture', on);
   localStorage.setItem('orbita-big-picture', on ? '1' : '0');
   toast(on ? 'Modo Big Picture ativado' : 'Modo Big Picture desativado');
@@ -1802,3 +1811,13 @@ async function syncVoiceChat(force=false){
  if(!voiceChatTask&&(force||selected?.kind==='voice'))voiceChatTask=import('./voice-chat.js').then(module=>voiceChat=module.initVoiceChat({el,button,checked,toast,person,state:()=>({db,session,selected,home,room,callChannel})})).catch(error=>{voiceChatTask=null;throw error;});
  if(voiceChatTask){await voiceChatTask;voiceChat.update();}
 }
+
+const authRecovery=createAuthRecovery({auth:()=>db.auth,currentUser:()=>session?.user.id,onExpired:async account=>{
+ if(session?.user.id!==account)return;
+ saveComposerDraft();const cleanup=showSession(null);$('auth-submit').disabled=false;$('auth-status').textContent='Sua sessão expirou. Entre novamente para continuar.';
+ // Only the confirmed invalid local login is removed. No other device is signed out.
+ db.auth.signOut({scope:'local'}).catch(()=>{});await cleanup;
+}});
+let resumeAuth;
+function checkResumedSession(){clearTimeout(resumeAuth);if(!session||sessionInitializing||document.hidden)return;const account=session.user.id;resumeAuth=setTimeout(()=>{if(session?.user.id===account)authRecovery.get(account).catch(error=>{if(error?.name!=='AbortError'&&session?.user.id===account)toast('Não foi possível verificar a sessão. Confira sua conexão e tente novamente.');});},200);}
+window.addEventListener('focus',checkResumedSession);window.addEventListener('online',checkResumedSession);window.addEventListener('pageshow',checkResumedSession);document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkResumedSession();});

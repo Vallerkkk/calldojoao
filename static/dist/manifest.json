@@ -1,8 +1,8 @@
 {
-  "version": "d6351cda8127e7d9",
-  "entry": "/static/dist/app-IIPSJRUU.js",
+  "version": "c21112fa7245d77c",
+  "entry": "/static/dist/app-FBJ6OWHV.js",
   "files": [
-    "/static/dist/app-IIPSJRUU.js",
+    "/static/dist/app-FBJ6OWHV.js",
     "/static/dist/call-layout-30e039e0d8f5085b.css",
     "/static/dist/chunk-admin-controls-PU57D554.js",
     "/static/dist/chunk-chunk-5UINBKID.js",
@@ -45,7 +45,7 @@
     "/static/polish.css": "/static/dist/polish-8fd968519df3816b.css"
   },
   "integrity": {
-    "/static/dist/app-IIPSJRUU.js": "6d38479f8e53b57348815d7d373b9d046ed9f3da1443a887eaea489d50f81162",
+    "/static/dist/app-FBJ6OWHV.js": "56d10f090c224ef90f8953eefac35868b1bb6323ef169e3af2710942c7e8fd35",
     "/static/dist/call-layout-30e039e0d8f5085b.css": "30e039e0d8f5085b02184d9efd975351d2d4b35004e4a2c12f5666b9c1712407",
     "/static/dist/chunk-admin-controls-PU57D554.js": "544852734284656ebfaa41b480e4afe5497bed8a806b5ce7411a69a73b2bea84",
     "/static/dist/chunk-chunk-5UINBKID.js": "c6c8783733f07aba772f1abd5783b08850cd0c566360a9ed8895b96ee67be6c6",
