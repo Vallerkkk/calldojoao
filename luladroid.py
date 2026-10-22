@@ -64,7 +64,7 @@ def install_luladroid(app,current_user,settings):
             if not answer:raise HTTPException(503,'Não foi possível gerar uma resposta.')
             s=settings();packet=json.dumps({'id':reserved.json(),'text':answer},ensure_ascii=False).encode()
             async with api.LiveKitAPI(s['LIVEKIT_URL'],s['LIVEKIT_API_KEY'],s['LIVEKIT_API_SECRET'])as lk:
-                await lk.room.send_data(api.SendDataRequest(room=body.room_name,data=packet,kind=1,topic='orbita.luladroid'))
+                await lk.room.send_data(api.SendDataRequest(room=body.room_name,data=packet,kind=api.DataPacket.RELIABLE,topic='orbita.luladroid'))
             return {'sent':True}
         except HTTPException:raise
         except (httpx.HTTPError,ValueError,KeyError,IndexError):raise HTTPException(503,'O assistente está temporariamente indisponível.')from None

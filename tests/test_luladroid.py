@@ -42,5 +42,5 @@ class LuladroidTests(unittest.TestCase):
     response=TestClient(app.app).post('/api/luladroid/ask',json={'room_name':room,'speech':'segredo que não deve ir. eai LulaDroid qual a capital do Brasil?'})
    self.assertEqual(response.status_code,200,response.text);self.assertNotIn('fixture-only',response.text)
    request=next(args for url,args in calls if 'generativelanguage'in url)
-   self.assertEqual(request['json']['contents'],[{'parts':[{'text':'qual a capital do brasil?'}]}]);service.send_data.assert_awaited_once()
+   self.assertEqual(request['json']['contents'],[{'parts':[{'text':'qual a capital do brasil?'}]}]);service.send_data.assert_awaited_once();self.assertEqual(service.send_data.call_args.args[0].kind,luladroid.api.DataPacket.RELIABLE)
   finally:app.app.dependency_overrides.clear()
