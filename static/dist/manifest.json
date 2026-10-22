@@ -1,8 +1,8 @@
 {
-  "version": "651df434401c635e",
-  "entry": "/static/dist/app-ULAQCGKY.js",
+  "version": "1957f7ad3fca2754",
+  "entry": "/static/dist/app-7YE2ATFH.js",
   "files": [
-    "/static/dist/app-ULAQCGKY.js",
+    "/static/dist/app-7YE2ATFH.js",
     "/static/dist/call-layout-41217c9121da3858.css",
     "/static/dist/chunk-admin-controls-PZRQMPK4.js",
     "/static/dist/chunk-admin-diagnostics-O5UZQ5HT.js",
@@ -29,7 +29,7 @@
     "/static/dist/identity-6ebc994080d21c0a.css",
     "/static/dist/interface-c30ad38a9a1b3db8.css",
     "/static/dist/modern-dfbf9772c6bc459c.css",
-    "/static/dist/polish-29b3868020017811.css",
+    "/static/dist/polish-f28e37d293e590b4.css",
     "/static/dist/social-feed-62c05a9ca6c15537.css",
     "/static/dist/style-12bc4d80368e29aa.css",
     "/static/dist/themes-798ce3001de508c9.css"
@@ -44,11 +44,11 @@
     "/static/community-ux.css": "/static/dist/community-ux-a28b5109c4b7b2bc.css",
     "/static/identity.css": "/static/dist/identity-6ebc994080d21c0a.css",
     "/static/themes.css": "/static/dist/themes-798ce3001de508c9.css",
-    "/static/polish.css": "/static/dist/polish-29b3868020017811.css",
+    "/static/polish.css": "/static/dist/polish-f28e37d293e590b4.css",
     "/static/modern.css": "/static/dist/modern-dfbf9772c6bc459c.css"
   },
   "integrity": {
-    "/static/dist/app-ULAQCGKY.js": "2879ebdd3a7be80e86fa0ae86ae6e7fe29ac95b2d64a5ead503236be547cfbdc",
+    "/static/dist/app-7YE2ATFH.js": "3745ff3d5f7a0239d24a0db5e1c7c8faf860d4229e36edc85f927fc5eeca7fc8",
     "/static/dist/call-layout-41217c9121da3858.css": "41217c9121da385886b24e21b88d59a06c04e575277db89d6c1901b1a99d41da",
     "/static/dist/chunk-admin-controls-PZRQMPK4.js": "33a26d5d098f87e76a30ed76cb87665afe5d9c565aab6fd4cff170d40364ff2e",
     "/static/dist/chunk-admin-diagnostics-O5UZQ5HT.js": "db2508c2c9152fbe631806e53dd148bd67a8b3695a0094caa6145d906b978027",
@@ -75,7 +75,7 @@
     "/static/dist/identity-6ebc994080d21c0a.css": "6ebc994080d21c0a7762bce8511b194c8789ec236e30410ea87dc9dbc01e0035",
     "/static/dist/interface-c30ad38a9a1b3db8.css": "c30ad38a9a1b3db8298e710ba83d5285f4859f9a0ba254d1407d34971e5cb4eb",
     "/static/dist/modern-dfbf9772c6bc459c.css": "dfbf9772c6bc459cf02777db2a4552b159ad6db43b2be1f7969b7d686c52a25a",
-    "/static/dist/polish-29b3868020017811.css": "29b38680200178114a4c2c9fe18dad11059e702a28d0df2c223934401a6005d8",
+    "/static/dist/polish-f28e37d293e590b4.css": "f28e37d293e590b4f4b304a8b6e470b87b1f34d8922a3ff5b08800e4671225ef",
     "/static/dist/social-feed-62c05a9ca6c15537.css": "62c05a9ca6c15537bf253125c4c084de10a50bfc9bc981f016b493158cb66c53",
     "/static/dist/style-12bc4d80368e29aa.css": "12bc4d80368e29aa66ecaa841d8d64987a5ac961ef98b0fd661ea0ad36361951",
     "/static/dist/themes-798ce3001de508c9.css": "798ce3001de508c9b84f827c480f6fb7e7a93657fa4b13d8e368392a43386def"

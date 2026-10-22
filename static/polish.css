@@ -1682,3 +1682,110 @@ body[data-color-mode=light] .jump-latest{background:#fff;color:#222333;box-shado
   *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
   .message.ui-message-in,.voice-view:not([hidden]),.friends-view:not([hidden]),#text-view:not([hidden]),#app-view:not([hidden]){animation:none!important}
 }
+
+/* ---------------------------------------------------------------------------
+   Chamada: cards com profundidade e chat lateral da sala
+--------------------------------------------------------------------------- */
+#voice-view .participant{
+  background:
+    radial-gradient(80% 110% at 50% 0%,rgba(139,108,255,.20),transparent 72%),
+    linear-gradient(160deg,rgba(32,34,50,.96),rgba(17,18,28,.98));
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:18px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 20px 50px -30px #000;
+  transition:border-color var(--dur-2),box-shadow var(--dur-2),transform var(--dur-2) var(--ease-out);
+}
+#voice-view .participant:nth-child(n){
+  background:
+    radial-gradient(80% 110% at 50% 0%,rgba(139,108,255,.20),transparent 72%),
+    linear-gradient(160deg,rgba(32,34,50,.96),rgba(17,18,28,.98));
+}
+#voice-view .participant:hover{border-color:rgba(172,152,255,.26);transform:translateY(-2px)}
+#voice-view .participant.speaking{
+  border-color:rgba(61,220,132,.55);
+  box-shadow:0 0 0 2px rgba(61,220,132,.18),0 0 34px -8px rgba(61,220,132,.4),inset 0 1px 0 rgba(255,255,255,.08);
+}
+#voice-view .participant .avatar{
+  width:64px;height:64px;
+  border-radius:50%;
+  font-size:22px;
+  font-weight:650;
+  background:linear-gradient(145deg,var(--accent),var(--accent-2));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 8px 22px -10px var(--accent-glow);
+}
+#voice-view .participant-name{font-size:13.5px;font-weight:600;color:#fff}
+#voice-view .participant-status{font-size:10px;color:var(--text-mut)}
+#voice-view .media-tile{
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,.09);
+  box-shadow:0 18px 50px -30px #000;
+}
+#voice-view .media-tile figcaption{
+  padding:9px 12px;
+  background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(10,11,17,.9));
+  border-top:1px solid var(--border);
+}
+
+/* Botão do chat da sala: antes o texto quebrava dentro de um quadrado 44px. */
+#voice-chat-toggle{
+  width:auto!important;min-width:0!important;
+  padding:0 12px!important;
+  display:inline-flex;align-items:center;gap:7px;
+  font-size:11.5px;font-weight:600;white-space:nowrap;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.04);
+  border-radius:10px;
+}
+#voice-chat-toggle::before{content:'💬';font-size:13px;line-height:1}
+#voice-chat-toggle[aria-expanded=true]{background:rgba(139,108,255,.16);border-color:rgba(172,152,255,.32);color:var(--accent-hover)}
+
+/* Painel de texto da sala */
+.voice-room-chat{
+  border-left:1px solid var(--border-strong);
+  background:linear-gradient(180deg,rgba(20,21,31,.98),rgba(13,14,22,.99));
+  box-shadow:-26px 0 70px -34px #000;
+}
+.voice-chat-header{
+  padding:14px 16px;
+  border-bottom:1px solid var(--border);
+  background:rgba(255,255,255,.02);
+}
+.voice-chat-header h3{font-family:var(--display);font-size:17px;font-weight:600;letter-spacing:-.03em}
+.voice-chat-header .text-button{font-size:11.5px;color:var(--text-mut);padding:6px 8px;border-radius:7px}
+.voice-chat-header .text-button:hover{background:rgba(255,255,255,.06);color:var(--text)}
+.voice-chat-messages{padding:12px}
+.voice-chat-message{
+  padding:10px 12px;
+  margin-bottom:6px;
+  border:0;
+  border-radius:12px;
+  background:rgba(255,255,255,.025);
+}
+.voice-chat-message:nth-child(even){background:rgba(255,255,255,.045)}
+.voice-chat-message strong{font-size:12.5px;font-weight:650;color:#fff}
+.voice-chat-message time{display:inline-block;margin-left:6px;font-size:10px;color:var(--text-mut)}
+.voice-chat-message p{margin:5px 0 0;font-size:13.5px;line-height:1.55;color:var(--text-dim)}
+.voice-chat-message .text-button{font-size:10.5px;color:var(--text-mut);margin-top:4px;padding:2px 4px}
+.voice-chat-form{
+  padding:10px 12px calc(12px + env(safe-area-inset-bottom));
+  gap:7px;
+  border-top:1px solid var(--border);
+  background:rgba(255,255,255,.015);
+}
+.voice-chat-form textarea{
+  background:rgba(6,7,12,.5);
+  border:1px solid var(--border-strong);
+  border-radius:12px;
+  padding:9px 11px;
+  font-size:13px;
+  transition:border-color var(--dur-1),box-shadow var(--dur-2);
+}
+.voice-chat-form textarea:focus{outline:none;border-color:rgba(172,152,255,.5);box-shadow:var(--ring)}
+.voice-chat-form .primary{border-radius:11px;padding:0 18px;font-size:12.5px;font-weight:600}
+.voice-room-chat>p[role=status]{padding:0 14px 8px;font-size:11px;color:var(--text-mut)}
+
+@media(max-width:780px){
+  #voice-chat-toggle{width:44px!important;min-width:44px!important;padding:0!important;justify-content:center;font-size:0;gap:0}
+  #voice-chat-toggle::before{font-size:19px}
+}
+
