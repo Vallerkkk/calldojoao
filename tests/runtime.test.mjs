@@ -79,3 +79,16 @@ test('joining another room preserves the queued mute for the previous microphone
   await Promise.all([enabling, muting, joining]);
   assert.deepEqual(states, [['first', true], ['first', false], ['second', true]]);
 });
+
+test('draft snapshots survive reload and never load another account',()=>{
+ const values=new Map(),storage={getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value)};
+ const drafts=new DraftStore();drafts.useAccount('one',storage);drafts.set('one:channel:a','texto salvo');drafts.flush();
+ const restored=new DraftStore();restored.useAccount('one',storage);assert.equal(restored.get('one:channel:a'),'texto salvo');
+ restored.useAccount('two',storage);assert.equal(restored.get('one:channel:a'),'');restored.flush();
+ drafts.erase();const erased=new DraftStore();erased.useAccount('one',storage);assert.equal(erased.get('one:channel:a'),'');
+});
+test('expired draft snapshots and foreign account keys are discarded',()=>{
+ const storage={getItem:()=>JSON.stringify({savedAt:Date.now()-31*86400000,items:[['one:channel:a','old']]}),setItem(){}};
+ const drafts=new DraftStore();drafts.useAccount('one',storage);assert.equal(drafts.get('one:channel:a'),'');
+ storage.getItem=()=>JSON.stringify({savedAt:Date.now(),items:[['other:channel:a','private']]});drafts.useAccount('one',storage);assert.equal(drafts.get('other:channel:a'),'');
+});

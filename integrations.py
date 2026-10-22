@@ -34,6 +34,15 @@ def install(app, current_user, settings, make_token):
             friends = await rows('friendships', headers, {'status': 'eq.accepted', 'or': f'(and(requester_id.eq.{convo["user_a"]},recipient_id.eq.{convo["user_b"]}),and(requester_id.eq.{convo["user_b"]},recipient_id.eq.{convo["user_a"]}))', 'select': 'id'})
             if not friends:
                 raise HTTPException(403, 'Adicionem-se como amigos para continuar.')
+            try:
+                async with client_for(app) as client:
+                    permission = await client.post(settings()['SUPABASE_URL']+'/rest/v1/rpc/can_call_conversation',headers=headers,json={'target':str(target_id)})
+                if permission.status_code != 200:
+                    raise HTTPException(503, 'Não foi possível verificar a privacidade da chamada.')
+                if permission.json() is not True:
+                    raise HTTPException(403, 'Esta chamada foi limitada pelas configurações de privacidade.')
+            except (httpx.HTTPError, ValueError):
+                raise HTTPException(503, 'Não foi possível verificar a privacidade da chamada.') from None
         return found[0]
 
     install_videochamada(app, current_user, scope)

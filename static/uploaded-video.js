@@ -17,8 +17,19 @@ function start(video,record){
     }).catch(()=>{}).finally(()=>{record.pending=false;});
   }catch{record.pending=false;}
 }
+async function enlarge(video){
+  if(video.requestFullscreen){try{await video.requestFullscreen();return;}catch{}}
+  if(video.webkitEnterFullscreen){try{video.webkitEnterFullscreen();return;}catch{}}
+  const dialog=document.createElement('dialog'),close=document.createElement('button'),large=video.cloneNode(true);
+  close.type='button';close.textContent='Fechar vídeo';dialog.className='video-lightbox';dialog.setAttribute('aria-label','Vídeo ampliado');
+  large.removeAttribute('id');large.controls=true;large.muted=video.muted;large.currentTime=video.currentTime;
+  const sink=localStorage.getItem('orbita-audio-output');if(sink&&large.setSinkId)large.setSinkId(sink).catch(()=>{});
+  const playing=!video.paused;video.pause();dialog.append(close,large);document.body.append(dialog);
+  close.onclick=()=>dialog.close();dialog.addEventListener('close',()=>{video.currentTime=large.currentTime;large.pause();dialog.remove();if(playing&&video.isConnected)video.play().catch(()=>{});},{once:true});dialog.showModal();if(playing)large.play().catch(()=>{});close.focus();
+}
+function expandButton(video,record){if(record.expand||!video.isConnected)return;const button=document.createElement('button');button.type='button';button.className='soft-button video-enlarge';button.textContent='Ampliar vídeo';button.setAttribute('aria-label','Ampliar vídeo em tela cheia');button.onclick=()=>enlarge(video);video.after(button);record.expand=button;}
 function release(video,record){
-  record.disposed=true;visibilityObserver?.unobserve(video);clips.delete(video);
+  record.expand?.remove();record.disposed=true;visibilityObserver?.unobserve(video);clips.delete(video);
   for(const [name,handler] of record.events)video.removeEventListener(name,handler);
   video.pause();video.removeAttribute('src');video.load();
 }
@@ -49,7 +60,7 @@ export function watchUploadedVideo(video){
   // Calling play only for visible clips avoids background downloads and playback.
   const record={visible:!visibilityObserver,manualPause:false,autoPause:false,pending:false,disposed:false,events:[]};
   record.events=[
-    ['loadeddata',()=>start(video,record)],
+    ['loadeddata',()=>{expandButton(video,record);start(video,record);}],
     ['play',()=>{record.manualPause=false;if(!visible(video,record))pause(video,record);}],
     ['pause',()=>{if(record.autoPause)record.autoPause=false;else if(visible(video,record)&&video.getClientRects().length)record.manualPause=true;}],
   ];

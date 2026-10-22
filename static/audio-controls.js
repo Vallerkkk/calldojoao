@@ -4,7 +4,15 @@ import {createNoiseProcessor} from './noise-processor.js';
 export function initAudioControls(ctx){
   const {el,button}=ctx,read=kind=>localStorage.getItem('orbita-audio-'+kind)||'',tracks=new WeakMap();
   const supportsOutput=()=>typeof (window.AudioContext||window.webkitAudioContext)?.prototype?.setSinkId==='function';
-  let warned=false;
+  let warned=false,mixContext;const mixes=new WeakMap();
+  function mixOptions(){const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio)return false;mixContext=new Audio();return {audioContext:mixContext};}
+  function bind(room){if(mixContext){mixes.set(room,mixContext);mixContext=null;}}
+  async function ended(room){const audio=mixes.get(room);mixes.delete(room);if(audio&&audio.state!=='closed')await audio.close().catch(()=>{});}
+  async function switchDevice(room,kind,value){
+    // LiveKit 2.15's mixer switch does not await setSinkId. Confirm it ourselves.
+    if(kind==='audiooutput'){const audio=mixes.get(room);if(audio?.setSinkId)await audio.setSinkId(value||'');}
+    const ok=await room.switchActiveDevice(kind,value||'default');if(ok===false)throw Error('Dispositivo indisponível');
+  }
   const enhanced=()=>ctx.noise()&&localStorage.getItem('orbita-noise-mode')!=='browser';
   async function process(track,room){
     if(!track||track.source!=='microphone'||typeof track.setProcessor!=='function')return;
@@ -27,7 +35,7 @@ export function initAudioControls(ctx){
     for(const pub of room.localParticipant.audioTrackPublications.values())if(pub.track)await process(pub.track,room);
   }
   async function connected(room){
-    const output=read('output');if(output&&supportsOutput())try{await room.switchActiveDevice('audiooutput',output);}catch{ctx.toast('Não foi possível usar a saída salva. Escolha outra em Entrada e saída de áudio.');}
+    const output=read('output');if(output&&supportsOutput())try{await switchDevice(room,'audiooutput',output);}catch{ctx.toast('Não foi possível usar a saída salva. Escolha outra em Entrada e saída de áudio.');}
     await sync(room);
   }
   function fields(container){
@@ -45,13 +53,13 @@ export function initAudioControls(ctx){
     }
     for(const [node,key,kind] of [[input,'input','audioinput'],[output,'output','audiooutput']])node.onchange=async()=>{
       const value=node.value,previous=read(key),room=ctx.room();node.disabled=true;
-      try{if(room){const ok=await room.switchActiveDevice(kind,value||'default');if(ok===false)throw Error('Dispositivo indisponível');if(ctx.room()!==room)throw Error('A chamada mudou. Escolha o dispositivo novamente.');}if(key==='output')await ctx.output(value);localStorage.setItem('orbita-audio-'+key,value);if(room)await sync(room);ctx.toast('Dispositivo de áudio atualizado.');}
-      catch{if(room&&ctx.room()===room)await room.switchActiveDevice(kind,previous||'default').catch(()=>{});if(key==='output')await ctx.output(previous).catch(()=>{});node.value=previous;ctx.toast('Não foi possível usar esse dispositivo. Verifique a conexão e a permissão do navegador.');}
+      try{if(room){await switchDevice(room,kind,value);if(ctx.room()!==room)throw Error('A chamada mudou. Escolha o dispositivo novamente.');}if(key==='output')await ctx.output(value);localStorage.setItem('orbita-audio-'+key,value);if(room)await sync(room);ctx.toast('Dispositivo de áudio atualizado.');}
+      catch{if(room&&ctx.room()===room)await switchDevice(room,kind,previous).catch(()=>{});if(key==='output')await ctx.output(previous).catch(()=>{});node.value=previous;ctx.toast('Não foi possível usar esse dispositivo. Verifique a conexão e a permissão do navegador.');}
       finally{node.disabled=false;}
     };
     box.append(status);setStatus();if(!supportsOutput())box.append(el('p','muted','Este navegador usa a saída de áudio definida no sistema.'));
     box.append(button('Atualizar dispositivos',async()=>{let stream;try{stream=await navigator.mediaDevices.getUserMedia({audio:true});}finally{stream?.getTracks().forEach(t=>t.stop());}await refresh();}));
-    container.append(box);refresh();
+    container.append(box);refresh();const devicesAbort=new AbortController();navigator.mediaDevices?.addEventListener?.('devicechange',refresh,{signal:devicesAbort.signal});document.getElementById('app-dialog')?.addEventListener('close',()=>devicesAbort.abort(),{once:true});
   }
-  return {fields,sync,connected,capture:()=>read('input')?{deviceId:{ideal:read('input')}}:{},open:()=>ctx.dialog('Entrada e saída de áudio',fields)};
+  return {fields,sync,connected,mixOptions,bind,ended,capture:()=>read('input')?{deviceId:{exact:read('input')}}:{},open:()=>ctx.dialog('Entrada e saída de áudio',fields)};
 }

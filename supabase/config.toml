@@ -1,0 +1,12 @@
+project_id = "orbita"
+
+# Each handler validates its own user token, webhook secret or cron secret.
+# User authentication is checked through Supabase Auth /user before any action.
+[functions.link-preview]
+verify_jwt = false
+[functions.delete-account]
+verify_jwt = false
+[functions.incoming-webhook]
+verify_jwt = false
+[functions.daily-digest]
+verify_jwt = false

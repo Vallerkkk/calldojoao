@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 from livekit import api
 from integrations import install
+from public_pages import install_public_pages
 from community_features import install_features
 from upstream import client_for, new_client, read_json
 from videochamada import configured as videochamada_configured
@@ -56,6 +57,8 @@ async def headers(request, call_next):
         response.headers['Cache-Control'] = 'no-store'
     elif re.fullmatch(r'/static/dist/[\w-]+-[A-Za-z0-9]{8,16}\.(?:js|css)', request.url.path) and response.status_code in (200,304):
         response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    elif request.url.path.startswith('/static/vendor/fonts/') and response.status_code in (200,304):
+        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
     elif request.url.path.startswith('/static/'):
         response.headers['Cache-Control'] = 'no-cache'
     return response
@@ -68,6 +71,7 @@ def config():
     return {'supabaseUrl': s['SUPABASE_URL'],
             'supabaseKey': s['SUPABASE_PUBLISHABLE_KEY'],
             'configured': ready,
+            'dailyDigestConfigured': os.getenv('DAILY_DIGEST_ENABLED','').lower()=='true',
             'sentryDsn': os.getenv('SENTRY_PUBLIC_DSN', '').strip(),
             'umamiScript': os.getenv('UMAMI_SCRIPT_URL', '').strip(),
             'umamiWebsiteId': os.getenv('UMAMI_WEBSITE_ID', '').strip(),
@@ -198,5 +202,6 @@ def download_desktop_installer():
 
 install(app, current_user, settings, make_token)
 install_features(app, current_user, settings)
+install_public_pages(app, settings)
 
 app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')

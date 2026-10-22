@@ -1,3 +1,6 @@
+import './ui-polish.js';
+import {initSocialLogin} from './social-login.js';
+import {initNavigationMotion} from './navigation-motion.js';
 import {DECORATIONS} from './profile-decoration-catalog.js';
 import {initShareReceiver} from './share-target.js';
 import {initThemeAccessibility,foreground} from './theme-accessibility.js';
@@ -124,8 +127,9 @@ async function showSession(next) {
     if(transition!==sessionTransition)return;
   }
   session = next;
+  if(next){const pending=sessionStorage.getItem('orbita-oauth-return');if(pending){const target=new URL(location.href);for(const [key,value]of new URLSearchParams(pending))if(['invite','post','profile','channel','dm','message','story'].includes(key))target.searchParams.set(key,value);history.replaceState(null,'',target);sessionStorage.removeItem('orbita-oauth-return');}}
   conversationCache.clear();outbox.clear();communityViews.clear();channelNodes.clear();voiceTrees.clear();memberNodes.clear();communityNodes.clear();lastViewport=null;
-  drafts.clear();pendingSends.clear();$('message-input').value='';
+  welcomeAccess.clear();drafts.useAccount(next?.user.id,localStorage);pendingSends.clear();$('message-input').value='';
   people=[];peopleById.clear();peopleByUsername.clear();profileMediaUrls.clear();friendships=[];conversations=[];profile=null;selected=null;channels=[];messages.clear();communities=[];siteRoles=[];communityRoleList=[];memberRoles=[];communityMemberList=[];communityEmojiList=[];communityEmojiUrls.clear();online.clear();publicVoicePresence=[];lastPresenceSignature='';home=false;
   for(const id of ['message-list','text-channels','voice-channels','member-list','dm-channels','rail-servers-list'])$(id).replaceChildren();
   attachmentUrls.clear();messageRows.clear();renderedScope='';
@@ -143,16 +147,18 @@ async function showSession(next) {
     // Cria o vínculo padrão antes da primeira consulta de canais protegida por RLS.
     await initSocial();
     if (!session || session.user.id !== next.user.id||transition!==sessionTransition) return;
+    await chooseOAuthNickname(next);if(transition!==sessionTransition)return;
+    if(!await ensureCommunityWelcome(activeCommunity)){showFriends();sessionReady=true;return;}
     const loadedChannels = await checked(db.from('channels').select('*').order('position'));
     if(transition!==sessionTransition||session?.user.id!==next.user.id)return;channels=loadedChannels;
     if (!channels.length) {renderCommunityRail();showFriends();sessionReady=true;await enhancements.sessionChanged();return;}
     renderChannels();await loadCommunityAccess();
     if(transition!==sessionTransition||session?.user.id!==next.user.id)return;
     await selectChannel(channels.find(c => c.community_id===activeCommunity&&c.default_for_new_members&&c.kind==='text')||channels.find(c => c.community_id===activeCommunity&&c.kind === 'text') || channels.find(c=>c.community_id===activeCommunity) || channels[0]);
-    if(transition===sessionTransition)sessionReady=true;
+    if(transition===sessionTransition){sessionReady=true;trackVisibleActivity().catch(()=>{});}
   }catch(error){if(transition===sessionTransition){toast('Não foi possível carregar a comunidade: '+errorText(error));sessionRecovery.hidden=false;}}
   finally{if(transition===sessionTransition){sessionInitializing=false;setEntryBusy(false);}}
-  if(transition===sessionTransition){await enhancements.sessionChanged();feed?.deepLink();shareReceiver?.resume();}
+  if(transition===sessionTransition){await enhancements.sessionChanged();feed?.deepLink();const publicProfile=new URL(location.href).searchParams.get('profile');if(/^[0-9a-f-]{36}$/i.test(publicProfile||''))feed.open('profile',{author:publicProfile});shareReceiver?.resume();const story=new URL(location.href).searchParams.get('story');if(/^[0-9a-f-]{36}$/i.test(story||'')){const tools=await loadSocialTools();if(transition===sessionTransition)tools.stories(story);}}
 }
 $('logout').onclick = async () => {
   try { await enhancements?.disablePush(true); } catch {}
@@ -345,7 +351,7 @@ function createMessageRow(message,grouped=false) {
     time.dateTime = message.created_at;time.title=new Date(message.created_at).toLocaleString('pt-BR');const messageName=el('strong','',name),messageRoles=memberRoles.filter(r=>r.user_id===message.author_id).map(r=>communityRoleList.find(role=>role.id===r.role_id)).filter(Boolean).sort((a,b)=>b.position-a.position);if(messageRoles[0]){messageName.style.color=messageRoles[0].color;messageName.append(el('span','role-badge',messageRoles[0].name));}meta.append(messageName,time);messageName.tabIndex=0;messageName.setAttribute('role','button');messageName.setAttribute('aria-label','Abrir perfil de '+name);messageName.onclick=()=>showProfile(person(message.author_id));messageName.onkeydown=e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();messageName.click();}};
     if(message.pinned)meta.append(el('small','pin-label','◆ Fixada'));
     content.append(meta);
-    if(message.reply_to){const original=messages.get(message.reply_to);content.append(el('div','reply-card',original?(original.profiles?.display_name||'Participante')+': '+original.content.slice(0,150):'↪ Resposta a uma mensagem anterior'));}
+    if(message.reply_to){const original=messages.get(message.reply_to);const quote=button(original?(original.profiles?.display_name||'Participante')+': '+original.content.slice(0,150):'↪ Resposta a uma mensagem anterior',()=>jumpToReply(message.reply_to),'reply-card');quote.setAttribute('aria-label','Ir para a mensagem respondida');content.append(quote);}
     content.append(safeRichText(message.content));if(message.poll)content.append(renderPoll(message));
     if(message.attachments){const a=message.attachments;if(a.mime_type?.startsWith('image/')){const preview=el('img','attachment-preview');preview.alt=a.name;preview.loading='lazy';reserveImage(preview);content.append(preview);resolveAttachmentUrl(a).then(url=>preview.src=url).catch(()=>preview.remove());}else if(a.mime_type?.startsWith('video/')){const preview=watchUploadedVideo(el('video'));preview.setAttribute('aria-label','Vídeo: '+a.name);content.append(preview);resolveAttachmentUrl(a).then(url=>{if(preview.isConnected)preview.src=url;}).catch(()=>preview.remove());}content.append(button('↓ '+a.name+' · '+(a.size/1024/1024).toFixed(1)+' MB',()=>downloadAttachment(a),'file-card'));}
     if(message.local_state){item.classList.add('message-local');item.dataset.delivery=message.local_state;const delivery=el('div','message-delivery');delivery.append(el('span','',message.local_state==='sending'?'Enviando…':message.local_state==='checking'?'Verificando envio…':message.local_state==='uncertain'?'Envio não confirmado.':('Falha no envio: '+(message.local_error||'tente novamente.'))));if(!['sending','checking'].includes(message.local_state)){delivery.append(button(message.local_state==='uncertain'?'Verificar envio':'Tentar novamente',()=>retryMessage(message.id),'text-button'),button('Descartar',()=>{outbox.remove(message.id);renderMessages();},'text-button'));}content.append(delivery);const avatar=el('div','avatar');setAvatar(avatar,messageProfile);item.append(avatar,content);item.dataset.messageId=message.id;return item;}
@@ -607,7 +613,7 @@ async function leaveCall({preserveJoin=false}={}) {
   for(const entry of [...callMedia.values()])disposeMedia(entry);
   document.querySelectorAll('[data-remote-audio]').forEach(node => node.remove());
   $('media-grid').replaceChildren(); updateCallUI();
-  if (previous) await previous.disconnect();
+  if (previous) {try{await previous.disconnect();}finally{await audioTools?.ended(previous);}}
 }
 $('join-call').onclick = async () => {
   if (joining || !session || selected?.kind !== 'voice') return;
@@ -632,7 +638,7 @@ $('join-call').onclick = async () => {
     connected = new Room({
       adaptiveStream: {pixelDensity:'screen'},
       dynacast:true,
-      webAudioMix:typeof (window.AudioContext||window.webkitAudioContext)==='function',
+      webAudioMix:audioTools.mixOptions(),
       audioCaptureDefaults:audioCapture(),
       videoCaptureDefaults:media.cameraCapture,
       publishDefaults: {
@@ -647,7 +653,7 @@ $('join-call').onclick = async () => {
             ?[ScreenSharePresets.h720fps15,ScreenSharePresets.h1080fps15]
             :[ScreenSharePresets.h720fps30,ScreenSharePresets.h1080fps30],
       },
-    }); room = connected; callChannel = target;
+    }); audioTools.bind(connected);room = connected; callChannel = target;
     connected.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {if(room!==connected)return;onTrack(track, participant, publication);updateCallUI();})
       .on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {if(room!==connected)return;removeTrack(track, publication, participant);updateCallUI();})
       .on(RoomEvent.TrackUnpublished, (publication, participant) => {if(room!==connected)return;removeTrack(publication.track,publication,participant);updateCallUI();})
@@ -752,6 +758,7 @@ async function boot() {
     if(!db){db=createClient(config.supabaseUrl,config.supabaseKey);
     // Supabase calls run outside the Auth callback to avoid locking the session.
     db.auth.onAuthStateChange((_event,next)=>{setTimeout(()=>showSession(next).catch(error=>toast(errorText(error))),0);});}
+    await socialLogin.ready(db,config);
     const {data, error} = await requestWithDeadline(()=>db.auth.getSession(),{timeout:30000}); if (error) throw error;
     await showSession(data.session);$('auth-submit').disabled=false;
   }catch(error){$('auth-status').textContent='Não foi possível conectar. '+errorText(error);$('auth-submit').disabled=true;startupRetry.hidden=false;}finally{booting=false;if(!sessionInitializing)setEntryBusy(false);}
@@ -886,11 +893,13 @@ function renderMembers() {
   for(const id of memberNodes.keys())if(!keep.has(id))memberNodes.delete(id);reconcileNodes($('member-list'),nodes);
   $('online-count').textContent=visible.filter(p=>online.has(p.id)).length+' online';
 }
+function readPinnedDMs(){try{const list=JSON.parse(localStorage.getItem('orbita-pinned-dms:'+session?.user.id)||'[]');return Array.isArray(list)?list:[];}catch{return [];}}
 function renderSocial() {
   $('dm-channels').replaceChildren();
   const pending=friendships.filter(f=>f.status==='pending'&&f.recipient_id===session.user.id).length;
   $('friends-badge').textContent=pending||'';
-  for(const c of conversations){const p=person(otherUser(c));const b=button('@ '+p.display_name,()=>openConversation(c),'channel'+(selected?.private&&selected.id===c.id?' active':''));b.dataset.channelId=c.id;$('dm-channels').append(b);}
+  const pinned=readPinnedDMs();
+  for(const c of [...conversations].sort((a,b)=>Number(pinned.includes(b.id))-Number(pinned.includes(a.id)))){const p=person(otherUser(c));const b=button('@ '+p.display_name,()=>openConversation(c),'channel'+(selected?.private&&selected.id===c.id?' active':''));b.dataset.channelId=c.id;const wrap=el('div','dm-pinned-row'),pin=button(pinned.includes(c.id)?'★':'☆',()=>{const next=readPinnedDMs().filter(id=>id!==c.id);if(!pinned.includes(c.id))next.unshift(c.id);localStorage.setItem('orbita-pinned-dms:'+session.user.id,JSON.stringify(next.slice(0,30)));renderSocial();},'dm-pin');pin.setAttribute('aria-label',(pinned.includes(c.id)?'Desafixar':'Fixar')+' conversa com '+p.display_name);pin.setAttribute('aria-pressed',String(pinned.includes(c.id)));wrap.append(b,pin);$('dm-channels').append(wrap);}
   enhancements?.decorateNavigation();
 }
 function showFriends() {
@@ -962,6 +971,8 @@ function showProfile(p) {
     voiceSec.append(el('div', 'rp-section-title', 'Em voz'));
     voiceSec.append(el('div', '', room&&(p.id===room.localParticipant.identity||room.remoteParticipants.has(p.id))?'Conectado a '+(callChannel?.name||'chamada'):'Sem chamada visível neste servidor'));
     body.append(voiceSec);
+    body.append(button('Perguntas deste perfil',async()=>{const tools=await loadSocialTools();if(session)tools.questions(p.id);}));if(p.id!==session.user.id)body.append(button('Denunciar perfil',async()=>{const tools=await loadSocialTools();if(session)tools.report('profile',p.id);}));
+    const badgeLine=el('p','profile-badges');body.append(badgeLine);const lastSeen=el('small','muted');body.append(lastSeen);if(p.presence_status!=='invisible')checked(db.from('profile_activity').select('last_seen').eq('user_id',p.id).maybeSingle()).then(activity=>{if(activity&&lastSeen.isConnected&&!online.has(p.id))lastSeen.textContent='Visto '+relativeTime(activity.last_seen);}).catch(()=>{});const viewing=session.user.id;checked(db.rpc('profile_badges',{target:p.id})).then(badges=>{if(session?.user.id===viewing&&badgeLine.isConnected&&Array.isArray(badges))badgeLine.textContent=badges.join(' · ');}).catch(()=>{});
     // Feed posts link
     const feedBtn = button('Ver publicações no Feed', () => {
       $('app-dialog').close();
@@ -1210,6 +1221,7 @@ initSocial=async()=>{
   if(!current())return;
   extraSubscription=db.channel('orbita-ui-'+session.user.id)
     .on('postgres_changes',{event:'*',schema:'public',table:'communities'},async()=>{try{const loaded=await checked(db.from('communities').select('*').order('created_at'));if(!current())return;communities=loaded;renderCommunityRail();}catch(error){if(current())toast(errorText(error));}})
+    .on('postgres_changes',{event:'*',schema:'public',table:'community_welcome'},payload=>{const id=payload.new?.community_id||payload.old?.community_id;welcomeAccess.delete(id);communityViews.delete(id);if(current()&&id===activeCommunity)ensureCommunityWelcome(id).then(accepted=>{if(!current())return;if(!accepted){if(callChannel?.community_id===id)leaveCall();showFriends();}else scheduleAccessRefresh();}).catch(error=>toast(errorText(error)));})
     .on('postgres_changes',{event:'*',schema:'public',table:'site_roles'},async()=>{try{const loaded=await checked(db.from('site_roles').select('*'));if(!current())return;siteRoles=loaded;renderMembers();updateFounders();}catch(error){if(current())toast(errorText(error));}})
     .on('postgres_changes',{event:'*',schema:'public',table:'poll_votes'},()=>{if(!home&&selected?.kind==='text')refreshMessages();}).subscribe();
   if(new URLSearchParams(location.hash.slice(1)).has('convite'))toast('Entre na conta de Kalil e abra Configurações → Aceitar convite de criador.');
@@ -1236,6 +1248,7 @@ async function refreshCommunity(c,intent){
   else{const updated=found.find(ch=>ch.id===selected?.id);if(updated)Object.assign(selected,updated);renderChannels();renderMembers();$('message-form').hidden=!!selected?.is_announcement&&!hasCommunityPermission('manage_messages');rememberCommunity();}
 }
 async function openCommunity(c){
+  if(!await ensureCommunityWelcome(c.id))return;
   const intent=++navigationEpoch;saveComposerDraft();saveConversation();rememberCommunity();
   const cached=communityViews.get(c.id);
   if(cached&&cached.expires>Date.now()&&cached.channels.length){
@@ -1254,7 +1267,7 @@ async function openCommunity(c){
 }
 const baseSelect=selectChannel;
 selectChannel=async channel=>{
-  const intent=++navigationEpoch;
+  const intent=++navigationEpoch;if(channel.community_id&&!await ensureCommunityWelcome(channel.community_id)){showFriends();return;}if(intent!==navigationEpoch)return;
   if(channel.community_id&&activeCommunity!==channel.community_id){activeCommunity=channel.community_id;if(!await loadCommunityAccess())return;}
   if(intent!==navigationEpoch||channel.community_id&&activeCommunity!==channel.community_id)return;
   replyTarget=null;$('reply-banner').classList.add('hidden');
@@ -1467,7 +1480,7 @@ renderChannels=()=>{initialRenderChannels();for(const node of channelNodes.value
 const priorCallUpdate=updateCallUI;
 updateCallUI=()=>{if(!room)talkHeld=false;priorCallUpdate();if(pttButton){const active=!!room&&callChannel?.id===selected?.id&&selected?.kind==='voice';pttButton.hidden=!active||!pushToTalk;pttButton.textContent=talkHeld?'Falando…':'Segure para falar';pttButton.setAttribute('aria-pressed',String(talkHeld));}};
 
-enhancements=initEnhancements({
+enhancements=initEnhancements({clearDrafts:()=>{drafts.erase();if(selected?.kind==='text')$('message-input').value='';},
   state:()=>({db,config,session,selected,messages,room,callChannel,profile,people,channels,conversations,communities,activeCommunity,home,deafened,communityMemberList}),
   el,button,toast,checked,showDialog,inputField,errorText,apiFetch,insertText:insertComposer,
   get messageFields(){return messageFields;},
@@ -1510,13 +1523,15 @@ const updateBeforeCallLayout=updateCallUI;
 updateCallUI=()=>{updateBeforeCallLayout();callLayout.update();};
 const feedContext={
   state:()=>({db,session,profile,moderator:siteRoles.some(role=>role.user_id===session?.user.id&&['creator','admin'].includes(role.role))}),
-  el,toast,checked,showDialog,
+  el,toast,checked,showDialog,tools:async action=>{const tools=await loadSocialTools();if(session)tools[action]();},sharePost:post=>sharePostToConversation(post),questions:async id=>{const tools=await loadSocialTools();if(session)tools.questions(id);},
   profile:p=>p.id===session?.user.id?$('settings').click():showProfile(person(p.id)||p),
   open:()=>{navigationEpoch++;saveComposerDraft();saveConversation();stopConversation();generation++;home=true;selected=null;
     for(const id of ['text-view','voice-view','friends-view'])$(id).hidden=true;
     renderChannels();renderSocial();updateCallUI();enhancements.channelChanged().catch(()=>{});},
   menu:()=>{document.body.classList.add('mobile-menu-open');document.querySelectorAll('.mobile-nav-btn').forEach(node=>node.setAttribute('aria-expanded','true'));},
-  closeMenu:closeMobileMenu
+  closeMenu:closeMobileMenu,
+  rooms:()=>channels.filter(c=>c.kind==='voice'&&!c.is_private).map(c=>({...c,participants:publicVoicePresence.filter(p=>p.channel_id===c.id).length})),
+  joinRoom:async channel=>{await selectChannel(channel);$('join-call').click();}
 };
 let feedInstance,feedTask,feedNavigation=0;
 const feedNav=el('button','server-icon action-rail','◈');feedNav.id='feed-nav';feedNav.title='Feed da Órbita';feedNav.setAttribute('aria-label',feedNav.title);$('friends-nav').after(feedNav);
@@ -1710,7 +1725,7 @@ $('settings').onclick=()=>{settingsBeforeAudioDevices();audioTools.fields($('dia
 const adminContext={el,button,toast,checked,showDialog,inputField,errorText,apiFetch,
  state:()=>({db,session,people,siteRoles,activeCommunity,selected}),hasPermission:permission=>hasCommunityPermission(permission),
  refreshRoles:async()=>{siteRoles=await checked(db.from('site_roles').select('*'));renderMembers();},
- reports:()=>enhancements.showReports(),moderation:()=>enhancements.showModeration(),audit:()=>enhancements.showAudit(),clearDraft:()=>{drafts.set(draftKey(selected),'');resizeComposer();}
+ reports:async()=>{const tools=await loadSocialTools();if(session)tools.moderation();},moderation:()=>enhancements.showModeration(),audit:()=>enhancements.showAudit(),clearDraft:()=>{drafts.set(draftKey(selected),'');resizeComposer();}
 };
 
 let adminTask;
@@ -1727,3 +1742,51 @@ shareReceiver=initShareReceiver({el,button,showDialog,toast,insertText:insertCom
 
 let profileAppearanceTask;
 async function openProfileAppearance(method){const uid=session?.user.id;try{if(!profileAppearanceTask)profileAppearanceTask=import('./profile-appearance.js').then(module=>module.initProfileAppearance({el,button,showDialog,loadProfilePrefs,saveProfilePrefs,applyDecorations,toast,state:()=>({profile})})).catch(error=>{profileAppearanceTask=null;throw error;});const appearance=await profileAppearanceTask;if(session?.user.id===uid)appearance[method]();}catch(error){toast(errorText(error));}}
+
+const socialLogin=initSocialLogin({toast});
+initNavigationMotion();
+window.addEventListener('pagehide',()=>{saveComposerDraft();drafts.flush();});
+
+let socialToolsTask;const welcomeAccess=new Map();
+function loadSocialTools(){return socialToolsTask||=(import('./social-tools.js').then(module=>module.initSocialTools({el,button,toast,showDialog,inputField,checked,
+ state:()=>({db,session,people,activeCommunity,selected}),legacyReports:()=>enhancements.showReports(),legacyFeedReports:async()=>{const instance=await loadFeed();instance.legacyReports();},config:()=>config,invalidateWelcome:id=>{welcomeAccess.delete(id);communityViews.delete(id);},isAdmin:()=>siteRoles.some(r=>r.user_id===session?.user.id),canManage:()=>hasCommunityPermission('manage_channels'),openCommunity:c=>openCommunity(c),refreshAccess:()=>loadCommunityAccess(),
+ openProfile:id=>feed.open('profile',{author:id}),openPost:id=>feed.open('thread',{parent:id}),
+ shareDM:async(id,text)=>{const p=person(id);await startConversation(p);if(selected?.private)insertComposer(text);}
+})).catch(error=>{socialToolsTask=null;throw error;}));}
+async function ensureCommunityWelcome(community){
+ const user=session?.user.id;if(!user)return false;
+ if(welcomeAccess.get(community))return true;
+ const info=await checked(db.from('community_welcome').select('community_id,rules,version').eq('community_id',community).maybeSingle());
+ if(session?.user.id!==user)return false;
+ if(!info?.rules?.trim()||communities.find(c=>c.id===community)?.created_by===user||siteRoles.some(r=>r.user_id===user)){welcomeAccess.set(community,true);return true;}
+ if(communities.some(c=>c.id===community&&!c.invite_only))await checked(db.rpc('join_public_community',{target:community}));if(session?.user.id!==user)return false;
+ const accepted=await checked(db.from('community_rule_acceptances').select('version').eq('community_id',community).eq('user_id',user).maybeSingle());
+ if(session?.user.id!==user)return false;
+ if(accepted?.version===info.version){welcomeAccess.set(community,true);return true;}
+ const tools=await loadSocialTools();if(session?.user.id!==user)return false;
+ const okay=await tools.welcome(info);if(okay){welcomeAccess.set(community,true);communityViews.delete(community);}return okay;
+}
+const moreTools=button('Sua Órbita · privacidade e novidades',async()=>{const tools=await loadSocialTools();if(session)tools.menu();},'ux-shortcuts-help');moreTools.id='social-tools';$('dm-quick-find').after(moreTools);
+const beforeSocialTools=$('settings').onclick;$('settings').onclick=()=>{beforeSocialTools();$('dialog-content').querySelector('.dialog-body')?.append(button('Privacidade, dados e recursos sociais',async()=>{const tools=await loadSocialTools();if(session)tools.menu();}));};
+
+function sharePostToConversation(post){
+ const user=session?.user.id;if(!user)return;showDialog('Compartilhar publicação',box=>{
+ const select=el('select');select.setAttribute('aria-label','Destino da publicação');
+ for(const c of channels.filter(c=>c.kind==='text'))select.append(new Option('#'+c.name,'channel:'+c.id));for(const c of conversations)select.append(new Option('@'+person(otherUser(c)).display_name,'dm:'+c.id));
+ box.append(el('p','muted','O link será colocado no rascunho. Revise e envie quando quiser. Publicações privadas continuam exigindo permissão.'),select,button('Colocar na conversa',async()=>{if(session?.user.id!==user)return;const [kind,id]=select.value.split(':');const target=(kind==='dm'?conversations:channels).find(c=>c.id===id);if(!target)throw Error('Escolha uma conversa.');if(kind==='dm')await openConversation(target);else await selectChannel(target);if(session?.user.id===user){insertComposer(new URL('/p/'+post.id,location.origin).href);$('app-dialog').close();}}));
+ });
+}
+
+async function trackVisibleActivity(){if(session&&!document.hidden&&profile?.presence_status!=='invisible')await db.rpc('touch_activity');}
+setInterval(()=>trackVisibleActivity().catch(()=>{}),300000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)trackVisibleActivity().catch(()=>{});});
+
+function chooseOAuthNickname(next){
+ if(!['google','discord'].includes(next.user.app_metadata?.provider)||!/^orbiter_[a-f0-9]{12}$/.test(profile?.username||''))return Promise.resolve();
+ return new Promise(resolve=>{const user=next.user.id;showDialog('Escolha seu nickname',box=>{box.append(el('p','muted','Este será seu nome na Órbita e seu @ para adicionar amigos. Você pode mudar depois.'));const form=el('form'),name=inputField(form,'Seu nickname','',24);name.pattern='[A-Za-z0-9_]{3,24}';name.minLength=3;name.required=true;const save=el('button','primary','Continuar');save.type='submit';form.append(save);form.onsubmit=async event=>{event.preventDefault();save.disabled=true;try{await checked(db.from('profiles').update({display_name:name.value.trim()}).eq('id',user));if(session?.user.id!==user)return;await loadSocial();$('app-dialog').close();}catch(error){toast(error.code==='23505'?'Esse nickname já está em uso. Escolha outro.':errorText(error));}finally{save.disabled=false;}};box.append(form);});$('app-dialog').addEventListener('close',resolve,{once:true});});
+}
+
+async function jumpToReply(id){
+ const user=session?.user.id,target=selected&&{...selected},version=generation;if(!target||!user)return;
+ const root=messages.get(id)||await checked(db.from(target.private?'direct_messages':'messages').select(messageFields).eq(target.private?'conversation_id':'channel_id',target.id).eq('id',id).maybeSingle());
+ if(session?.user.id!==user||selected?.id!==target.id||generation!==version)return;if(!root)throw Error('A mensagem não está mais disponível.');messages.set(root.id,root);renderMessages();requestAnimationFrame(()=>{if(generation!==version)return;const node=document.querySelector('[data-message-id="'+CSS.escape(root.id)+'"]');node?.scrollIntoView({block:'center'});node?.classList.add('message-target');});
+}

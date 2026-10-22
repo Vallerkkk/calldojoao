@@ -1,3 +1,4 @@
+import {isQuiet,channelNotifies,syncNotificationPreferences} from './notification-preferences.js';
 import {createAppSounds,SOUND_EFFECTS} from './app-sounds.js';
 import { relativeTime, safeLink, stickerNames, youtubeId } from './media-utils.js';
 import { reserveImage, focusElement } from './dom-utils.js';
@@ -42,12 +43,15 @@ export function initEnhancements(context) {
     font.setAttribute('aria-label', 'Tamanho da fonte das mensagens'); const value = el('output', '', font.value + ' px');
     font.oninput = () => { localStorage.setItem('orbita-font-size', font.value); value.value = font.value + ' px'; applyAppearance(); };
     fontLabel.append(font, value); parent.append(fontLabel);
+    const motion=checkbox(parent,'Reduzir animações','reduce-motion',false);motion.onchange=()=>{localStorage.setItem('orbita-reduce-motion',String(motion.checked));window.dispatchEvent(new Event('orbita:motion-changed'));};
+    parent.append(button('Apagar rascunhos deste aparelho',()=>{if(confirm('Apagar os rascunhos salvos desta conta neste aparelho?')){context.clearDrafts();toast('Rascunhos apagados.');}}));
+    parent.append(button('Central de ajuda e sugestões',()=>showDialog('Ajuda e sugestões',box=>{box.append(el('p','','Use Ctrl+K para encontrar canais e conversas. Durante uma chamada, abra a seta ao lado do microfone para trocar a entrada ou a saída de áudio.'),button('Reportar problema',()=>{const url=new URL('https://github.com/Vallerkkk/calldojoao/issues/new');url.searchParams.set('title','Problema no Órbita');window.open(url.href,'_blank','noopener,noreferrer');}));const suggestions=state().channels.find(c=>c.kind==='text'&&['sugestoes','sugestões'].includes(c.name.toLowerCase().replace(/^#/,'')));box.append(button('Abrir #sugestões',async()=>{const server=state().communities.find(c=>c.is_default),channel=suggestions||await checked(state().db.from('channels').select('*').eq('community_id',server?.id||state().activeCommunity).eq('name','sugestões').maybeSingle());if(!channel)throw Error('O canal de sugestões ainda não está disponível.');document.getElementById('app-dialog').close();await context.selectChannel(channel);}));})));
     appSounds.fields(parent,el,button);
     checkbox(parent, 'Sons de avisos e chamadas', 'sounds'); checkbox(parent, 'Manter a tela acesa durante chamadas', 'wake-lock');
     parent.append(button('Instalar Órbita', installApp), button('Ativar notificações e push', enableNotifications), button('Desativar push neste dispositivo', disablePush),button('Sair da conta',()=>{$('app-dialog').close();$('logout').click();},'danger'));
   }
 
-  const appSounds=createAppSounds(()=>state().deafened||state().profile?.presence_status==='dnd');
+  const appSounds=createAppSounds(()=>state().deafened||state().profile?.presence_status==='dnd'||isQuiet(state().session?.user.id));
   const audio=effect=>appSounds.play(effect);
 
   async function installPWA() {
@@ -102,7 +106,7 @@ export function initEnhancements(context) {
     if (!document.hidden && s.selected?.id === data.scope && !s.home) { markRead(); return; }
     const prior = unread[data.scope] || {count:0, seen:new Date().toISOString()};
     unread[data.scope] = {...prior, count:Math.min(999, prior.count + 1)}; saveUnread(); decorateNavigation();
-    if ((data.mentioned || data.private) && s.profile?.presence_status !== 'dnd') { audio(); if (document.hidden && 'Notification' in window && Notification.permission === 'granted' && !s.config.pushConfigured) {
+    if ((data.mentioned || data.private) && s.profile?.presence_status !== 'dnd'&&!isQuiet(s.session.user.id)&&channelNotifies(s.session.user.id,data)) { audio(); if (document.hidden && 'Notification' in window && Notification.permission === 'granted' && !s.config.pushConfigured) {
       const title = data.private ? 'Nova mensagem privada · Órbita' : 'Você foi mencionado · Órbita';
       if (registration) await registration.showNotification(title, {body:'Abra a Órbita para ler.', icon:'/static/icons/icon-192.png', tag:'orbita-' + data.id});
       else if ('Notification' in window) new Notification(title, {tag:'orbita-' + data.id});
@@ -139,6 +143,7 @@ export function initEnhancements(context) {
     const version=++sessionVersion,oldInbox=inbox,oldTyping=typing;inbox=typing=null;subscribedUser=uid;closePanel();clearTimeout(retryPush);seenActivity.clear();typingUsers.clear();unread={};
     await Promise.all([oldInbox,oldTyping].filter(Boolean).map(channel=>s.db.removeChannel(channel)));
     if(version!==sessionVersion)return;
+    if(uid)syncNotificationPreferences(s.db,uid).catch(()=>{});
     if (!uid) { const push = await registration?.pushManager?.getSubscription(); await push?.unsubscribe(); return; }
     try { unread = JSON.parse(localStorage.getItem('orbita-unread-' + uid) || '{}'); } catch { unread = {}; }
     for (const target of [...s.channels, ...s.conversations]) unread[target.id] ||= {count:0, seen:new Date().toISOString()};
@@ -176,7 +181,7 @@ export function initEnhancements(context) {
   });
   function activeAgain() { if(!state().session)return;if (idle) { idle=false; context.publishPresence().catch(()=>{}); } clearTimeout(idleTimer); idleTimer=setTimeout(()=>{idle=true;context.publishPresence().catch(()=>{});},300000); }
   for (const event of ['pointerdown','keydown','touchstart']) document.addEventListener(event,activeAgain,{passive:true}); activeAgain();
-  function presenceStatus() { const status=state().profile?.presence_status||'online';return status==='online'&&idle?'idle':status; }
+  function presenceStatus() { const status=state().profile?.presence_status||'online';if(status!=='invisible'&&isQuiet(state().session?.user.id))return 'dnd';return status==='online'&&idle?'idle':status; }
 
   let panelReturnFocus;
   function openPanel(title, kind) {
@@ -216,7 +221,7 @@ export function initEnhancements(context) {
   }
 
   let searchModule,searchTask;
-  async function showSearch(initial=''){const uid=state().session?.user.id,target=state().selected?.id;try{if(!searchTask)searchTask=import('./message-search.js').then(module=>searchModule=module.initMessageSearch({...context,openPanel,closePanel,report,panelKind:()=>panelKind})).catch(error=>{searchTask=null;throw error;});await searchTask;if(state().session?.user.id===uid&&state().selected?.id===target)searchModule.showSearch(initial);}catch(error){report(error);}}
+  async function showSearch(initial=''){const uid=state().session?.user.id,target=state().selected?.id;try{if(!searchTask)searchTask=import('./message-search.js').then(module=>searchModule=module.initMessageSearch({...context,openPanel,closePanel,report,openThread,panelKind:()=>panelKind})).catch(error=>{searchTask=null;throw error;});await searchTask;if(state().session?.user.id===uid&&state().selected?.id===target)searchModule.showSearch(initial);}catch(error){report(error);}}
   $('search-messages').oninput=()=>{}; // Searching no longer filters only the last loaded page.
   $('search-messages').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();showSearch(event.currentTarget.value);}};
   $('btn-search-toggle').onclick=()=>showSearch($('search-messages').value);
@@ -261,7 +266,7 @@ export function initEnhancements(context) {
     if(message.edited_at)article.querySelector('.message-meta')?.append(el('small','muted','(editada)'));
     const body=article.querySelector('.message-content');
     const urlText=message.content.match(/https:\/\/[^\s<>]+/)?.[0],url=safeLink(urlText);
-    if(url&&body&&!article.querySelector('.link-preview')){const link=el('a','link-preview');link.href=url.href;link.target='_blank';link.rel='noopener noreferrer';const id=youtubeId(url.href);if(id){const image=el('img');image.src='https://i.ytimg.com/vi/'+id+'/hqdefault.jpg';image.alt='Miniatura do vídeo no YouTube';image.loading='lazy';reserveImage(image,320,180);image.referrerPolicy='no-referrer';link.append(image);}link.append(el('strong','',id?'Vídeo no YouTube':url.hostname),el('span','muted',url.pathname.slice(0,100)||'Abrir link'));body.append(link);}
+    if(url&&body&&!article.querySelector('.link-preview')){const link=el('a','link-preview');link.href=url.href;link.target='_blank';link.rel='noopener noreferrer';const id=youtubeId(url.href);if(id){const image=el('img');image.src='https://i.ytimg.com/vi/'+id+'/hqdefault.jpg';image.alt='Miniatura do vídeo no YouTube';image.loading='lazy';reserveImage(image,320,180);image.referrerPolicy='no-referrer';link.append(image);}link.append(el('strong','',id?'Vídeo no YouTube':url.hostname),el('span','muted',url.pathname.slice(0,100)||'Abrir link'));body.append(link);import('./link-preview.js').then(module=>module.enhanceLinkPreview(link,url,state().db)).catch(()=>{});}
   }
   async function messageReceived(message,target) {if(panelKind==='thread'&&threadTarget?.id===target.id&&(message.thread_root===threadRoot||message.id===threadRoot))await loadThread(true);}
   async function messageDeleted(id,target){if(panelKind!=='thread'||threadTarget?.id!==target.id)return;if(threadRoot===id){closePanel();toast('Esta thread foi removida.');}else if(panel.querySelector('[data-message-id="'+CSS.escape(id)+'"]'))await loadThread(true);}
@@ -275,7 +280,7 @@ export function initEnhancements(context) {
     if(result.data.thread_root)await openThread(result.data);else context.revealMessage(result.data);
   }
 
-  function reportMessage(message,target){const uid=state().session.user.id;showDialog('Denunciar mensagem',box=>{box.append(el('p','muted','Descreva o problema. A denúncia não dá acesso à sua conversa privada para outras pessoas.'));const reason=inputField(box,'Motivo da denúncia','',500);reason.minLength=5;box.append(button('Enviar denúncia',async()=>{if(state().session?.user.id!==uid)throw Error('Sua conta mudou.');if(reason.value.trim().length<5)throw Error('Descreva o motivo com pelo menos 5 caracteres.');try{await checked(state().db.from('message_reports').insert({reporter_id:uid,[target.private?'direct_message_id':'message_id']:message.id,reason:reason.value.trim()}));}catch(error){if(error.code==='23505')throw Error('Você já denunciou esta mensagem.');throw error;}$('app-dialog').close();toast('Denúncia enviada à administração.');},'primary'));});}
+  function reportMessage(message,target){const uid=state().session.user.id;showDialog('Denunciar mensagem',box=>{box.append(el('p','muted','Uma cópia desta mensagem e seus anexos será enviada à moderação. O restante da conversa continua privado.'));const reason=inputField(box,'Motivo da denúncia','',500);reason.minLength=5;box.append(button('Enviar denúncia',async()=>{if(state().session?.user.id!==uid)throw Error('Sua conta mudou.');if(reason.value.trim().length<5)throw Error('Descreva o motivo com pelo menos 5 caracteres.');try{await checked(state().db.from('safety_reports').insert({reporter_id:uid,target_kind:target.private?'dm':'message',target_id:message.id,reason:reason.value.trim()}));}catch(error){if(error.code==='23505')throw Error('Você já denunciou esta mensagem.');throw error;}$('app-dialog').close();toast('Denúncia enviada à administração.');},'primary'));});}
   function showReports(){const uid=state().session?.user.id;showDialog('Denúncias de mensagens',box=>{checked(state().db.from('message_reports').select('*').eq('resolved',false).order('created_at',{ascending:false}).limit(50)).then(rows=>{if(!box.isConnected||state().session?.user.id!==uid)return;if(!rows.length)box.append(el('p','muted','Nenhuma denúncia pendente.'));for(const row of rows){const item=el('article','audit-entry');item.append(el('p','',row.reason),el('small','muted',row.direct_message_id?'Mensagem privada: conteúdo protegido pelas permissões da conversa.':'Mensagem de canal'),button('Resolver denúncia',async()=>{await checked(state().db.from('message_reports').update({resolved:true}).eq('id',row.id));item.remove();}));box.append(item);}}).catch(report);});}
   function showModeration() {
     if(!context.hasPermission('manage_members'))return toast('Seu cargo não permite moderar membros.');
@@ -335,7 +340,7 @@ export function initEnhancements(context) {
   function connectionState(){const offlineNow=!navigator.onLine,retrying=['connecting','reconnecting'].includes(channelStatus);offline.hidden=!offlineNow&&!retrying;offline.textContent=offlineNow?'Você está sem conexão. Seus rascunhos permanecem nesta aba.':channelStatus==='connecting'?'Conectando às mensagens em tempo real…':'Reconectando… Você pode continuar lendo as mensagens carregadas.';$('conn-label').textContent=offlineNow?'Sem conexão':channelStatus==='connected'?'Tempo real ativo':retrying?'Reconectando…':'Conexão disponível';document.body.classList.toggle('network-offline',offlineNow);}
   window.addEventListener('online',connectionState);window.addEventListener('offline',connectionState);connectionState();
   window.visualViewport?.addEventListener('resize',viewport);window.addEventListener('resize',viewport);viewport();
-  document.addEventListener('visibilitychange',()=>{runTimers();syncWakeLock();if(!document.hidden){markRead();activeAgain();}});
+  document.addEventListener('visibilitychange',()=>{runTimers();syncWakeLock();if(!document.hidden){markRead();activeAgain();const s=state();if(s.session)syncNotificationPreferences(s.db,s.session.user.id).catch(()=>{});}});
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&panel)closePanel();});
   let drawerInvoker;
   const drawerFocusables=()=>[...document.querySelectorAll('.rail button,.sidebar button,.sidebar input,.sidebar a')].filter(node=>!node.disabled&&node.getClientRects().length);
@@ -369,7 +374,7 @@ export function initEnhancements(context) {
   document.querySelector('#voice-view .chat-actions').append(button('Ouvir juntos',showWatch,'feature-options'));
   const oldSettings=$('settings').onclick;$('settings').onclick=()=>{oldSettings();preferenceFields($('dialog-content'));};
   $('btn-notif-toggle').onclick=()=>enableNotifications().catch(report);
-  const latest=button('↓ Mensagens recentes',()=>{$('message-list').scrollTo({top:$('message-list').scrollHeight,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});},'jump-latest');latest.hidden=true;document.querySelector('.message-form-wrap').append(latest);
+  const latest=button('↓ Mensagens recentes',()=>{$('message-list').scrollTo({top:$('message-list').scrollHeight,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches||document.body.dataset.reduceMotion==='true'?'auto':'smooth'});},'jump-latest');latest.hidden=true;document.querySelector('.message-form-wrap').append(latest);
   function updateLatest(){const list=$('message-list');latest.hidden=list.scrollHeight-list.scrollTop-list.clientHeight<180;}
   $('message-list').addEventListener('scroll',updateLatest,{passive:true});new ResizeObserver(updateLatest).observe($('message-list'));
   document.addEventListener('click',event=>{for(const menu of document.querySelectorAll('.message-menu[open]'))if(!menu.contains(event.target)||event.target.closest('button'))menu.open=false;});

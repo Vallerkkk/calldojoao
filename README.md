@@ -143,3 +143,7 @@ Validação: tests/identity_browser.cjs e tests/youtube_watch_browser.cjs cobrem
 ## Desempenho, qualidade e operação
 
 A interface de produção é compilada com `npm ci` e `npm run build`, com arquivos compactados, hashes automáticos e carregamento sob demanda. O workflow de qualidade roda em cada push. Consulte [docs/OPERATIONS.md](docs/OPERATIONS.md) para testes, adoção do baseline, PWA, avisos de atualização e configuração opcional de Sentry/Umami/UptimeRobot. As integrações externas permanecem desligadas sem configuração; nenhuma assinatura foi contratada.
+
+## Expansão social e privacidade
+
+Consulte [recursos e operação](docs/social-expansion.md) para os novos controles, limites, login social, funções do Supabase e integrações preparadas sem contratação.
