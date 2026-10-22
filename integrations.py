@@ -194,7 +194,7 @@ def install(app, current_user, settings, make_token):
                 else:
                     last_error = f'HTTP {response.status_code}'
             except Exception as exc:
-                last_error = str(exc)
+                last_error = 'Falha de comunicação com Gemini.'
 
         fallback_reply = (
             f"Olá {speaker_name}! LulaDroid na escuta com Gemini. "
