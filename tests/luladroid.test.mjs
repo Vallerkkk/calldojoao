@@ -1,0 +1,2 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {wakeQuestion}from '../static/luladroid.js';
+test('wake phrase accepts accents and spacing, never ordinary conversation',()=>{assert.equal(wakeQuestion('E aí Lula Droid, que horas são?'),'que horas sao?');assert.equal(wakeQuestion('eai LulaDroid'),'');assert.equal(wakeQuestion('conversa com LulaDroid'),null);assert.equal(wakeQuestion('eai outro bot oi'),null);});

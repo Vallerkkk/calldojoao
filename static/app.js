@@ -29,6 +29,7 @@ function updateComposer() { $('send').disabled=!navigator.onLine||pendingSends.h
 const $ = id => document.getElementById(id);
 let db, config, session, channels = [], selected, signup = false;
 let subscription, generation = 0, messages = new Map(), oldest, hasMore = false, loading = false;
+let lulaController,lulaTask;
 let room, callChannel, joining = false, shuttingDown = false, callJoin;
 function cancelCallJoin() { callJoin?.abort(); callJoin=null; joining=false; }
 let cameraFacing=localStorage.getItem('orbita-camera-facing')==='environment'?'environment':'user',cameraTask;
@@ -608,6 +609,7 @@ function updateSpeakingUI() {
 async function leaveCall({preserveJoin=false}={}) {
   if(!preserveJoin)cancelCallJoin();
   cameraTask=null;const previous = room;if(previous)microphoneSwitch.set(previous.localParticipant,false);room = null;callChannel = null;talkHeld=false;
+  lulaController?.stop();lulaController=null;
   enhancements?.callEnded(previous);callReactions?.clear();
   if (previous) previous.removeAllListeners();
   for(const entry of [...callMedia.values()])disposeMedia(entry);
@@ -671,6 +673,7 @@ $('join-call').onclick = async () => {
     try { await connected.startAudio(); } catch { toast('A chamada entrou. Toque na tela para liberar o áudio neste navegador.'); }
     if(!current()||room!==connected){await connected.disconnect();return;}
     enhancements.connected(connected,RoomEvent,result);
+    loadLuladroid(connected,target).catch(()=>{});
     try { if(result.canPublish!==false)await connected.localParticipant.setMicrophoneEnabled(!pushToTalk&&!deafened, audioCapture()); }
     catch (error) { toast('Você entrou sem microfone. ' + errorText(error)); }
     if(current()&&room===connected)await audioTools?.connected(connected);
@@ -1387,7 +1390,7 @@ $('dd-boost-btn').onclick=openCloud;$('banner-action-btn').onclick=openCloud;$('
 $('up-mic-btn').onclick=()=>$('mic').click();$('up-deafen-btn').onclick=()=>$('deafen').click();$('vb-mic').onclick=()=>$('mic').click();$('vb-video').onclick=()=>$('camera').click();$('dock-name').onclick=()=>{if(callChannel)selectChannel(callChannel);};
 $('back-to-call').onclick=()=>{if(selected?.private){const c=conversations.find(c=>c.id===selected.id);if(c)openConversation(c);}else{const c=channels.find(c=>c.community_id===activeCommunity&&c.kind==='text');if(c)selectChannel(c);}};
 $('connection-info').onclick=()=>showDialog('Conexão da chamada',container=>{container.append(el('p','',room?'Estado: '+room.state:'Você ainda não está em uma chamada.'));if(room){container.append(el('p','','Qualidade local: '+room.localParticipant.connectionQuality));for(const p of room.remoteParticipants.values())container.append(el('p','',(p.name||'Participante')+' · '+p.connectionQuality));}container.append(el('p','muted',`Vídeo adaptativo: perfil ${mediaSettings().mode}. O navegador ajusta a recepção à rede; áudio da tela só é liberado em abas e navegadores compatíveis.`));});
-function receiveCallData(...args){callReactions?.receive(...args);}
+function receiveCallData(...args){callReactions?.receive(...args);lulaController?.receive(...args);}
 const screenLabel=el('label','screen-option'),screenCheck=el('input');screenCheck.type='checkbox';screenCheck.id='share-screen-audio';screenCheck.checked=localStorage.getItem('orbita-screen-audio')!=='false';screenLabel.append(screenCheck,document.createTextNode('Incluir áudio da tela (autorize também na janela do navegador)'));$('active-controls').before(screenLabel);
 function updateScreenAudio(){localStorage.setItem('orbita-screen-audio',String(screenCheck.checked));}
 screenCheck.onchange=updateScreenAudio;updateScreenAudio();
@@ -1725,6 +1728,7 @@ $('settings').onclick=()=>{settingsBeforeAudioDevices();audioTools.fields($('dia
 const adminContext={el,button,toast,checked,showDialog,inputField,errorText,apiFetch,
  state:()=>({db,session,people,siteRoles,activeCommunity,selected}),hasPermission:permission=>hasCommunityPermission(permission),
  refreshRoles:async()=>{siteRoles=await checked(db.from('site_roles').select('*'));renderMembers();},
+ transcripts:async()=>{const module=await(lulaTask||=import('./luladroid.js'));if(session)module.transcriptHistory(lulaContext);},
  reports:async()=>{const tools=await loadSocialTools();if(session)tools.moderation();},moderation:()=>enhancements.showModeration(),audit:()=>enhancements.showAudit(),clearDraft:()=>{drafts.set(draftKey(selected),'');resizeComposer();}
 };
 
@@ -1790,3 +1794,6 @@ async function jumpToReply(id){
  const root=messages.get(id)||await checked(db.from(target.private?'direct_messages':'messages').select(messageFields).eq(target.private?'conversation_id':'channel_id',target.id).eq('id',id).maybeSingle());
  if(session?.user.id!==user||selected?.id!==target.id||generation!==version)return;if(!root)throw Error('A mensagem não está mais disponível.');messages.set(root.id,root);renderMessages();requestAnimationFrame(()=>{if(generation!==version)return;const node=document.querySelector('[data-message-id="'+CSS.escape(root.id)+'"]');node?.scrollIntoView({block:'center'});node?.classList.add('message-target');});
 }
+
+const lulaContext={el,button,toast,checked,showDialog,apiFetch,person,state:()=>({db,session,room})};
+async function loadLuladroid(target,channel){const user=session?.user.id;const module=await(lulaTask||=import('./luladroid.js'));if(room!==target||session?.user.id!==user)return;lulaController?.stop();lulaController=module.initLuladroid(lulaContext,target,(channel.private?'direct-':'channel-')+channel.id);}

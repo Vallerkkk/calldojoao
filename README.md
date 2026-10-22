@@ -147,3 +147,5 @@ A interface de produção é compilada com `npm ci` e `npm run build`, com arqui
 ## Expansão social e privacidade
 
 Consulte [recursos e operação](docs/social-expansion.md) para os novos controles, limites, login social, funções do Supabase e integrações preparadas sem contratação.
+
+LulaDroid: [transcrição consentida e assistente de voz](docs/luladroid.md).

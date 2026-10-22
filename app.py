@@ -17,6 +17,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from livekit import api
 from integrations import install
 from public_pages import install_public_pages
+from luladroid import install_luladroid
 from community_features import install_features
 from upstream import client_for, new_client, read_json
 from videochamada import configured as videochamada_configured
@@ -203,5 +204,6 @@ def download_desktop_installer():
 install(app, current_user, settings, make_token)
 install_features(app, current_user, settings)
 install_public_pages(app, settings)
+install_luladroid(app, current_user, settings)
 
 app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')
