@@ -29,7 +29,7 @@ function updateComposer() { $('send').disabled=!navigator.onLine||pendingSends.h
 const $ = id => document.getElementById(id);
 let db, config, session, channels = [], selected, signup = false;
 let subscription, generation = 0, messages = new Map(), oldest, hasMore = false, loading = false;
-let lulaController,lulaTask;
+let lulaController,lulaTask,voiceChat,voiceChatTask;
 let room, callChannel, joining = false, shuttingDown = false, callJoin;
 function cancelCallJoin() { callJoin?.abort(); callJoin=null; joining=false; }
 let cameraFacing=localStorage.getItem('orbita-camera-facing')==='environment'?'environment':'user',cameraTask;
@@ -131,7 +131,7 @@ async function showSession(next) {
   if(next){const pending=sessionStorage.getItem('orbita-oauth-return');if(pending){const target=new URL(location.href);for(const [key,value]of new URLSearchParams(pending))if(['invite','post','profile','channel','dm','message','story'].includes(key))target.searchParams.set(key,value);history.replaceState(null,'',target);sessionStorage.removeItem('orbita-oauth-return');}}
   conversationCache.clear();outbox.clear();communityViews.clear();channelNodes.clear();voiceTrees.clear();memberNodes.clear();communityNodes.clear();lastViewport=null;
   welcomeAccess.clear();drafts.useAccount(next?.user.id,localStorage);pendingSends.clear();$('message-input').value='';
-  people=[];peopleById.clear();peopleByUsername.clear();profileMediaUrls.clear();friendships=[];conversations=[];profile=null;selected=null;channels=[];messages.clear();communities=[];siteRoles=[];communityRoleList=[];memberRoles=[];communityMemberList=[];communityEmojiList=[];communityEmojiUrls.clear();online.clear();publicVoicePresence=[];lastPresenceSignature='';home=false;
+  people=[];peopleById.clear();peopleByUsername.clear();profileMediaUrls.clear();friendships=[];conversations=[];profile=null;selected=null;channels=[];messages.clear();communities=[];siteRoles=[];communityRoleList=[];memberRoles=[];communityMemberList=[];communityEmojiList=[];communityEmojiUrls.clear();online.clear();publicVoicePresence=[];lastPresenceSignature='';home=false;voiceChat?.update();
   for(const id of ['message-list','text-channels','voice-channels','member-list','dm-channels','rail-servers-list'])$(id).replaceChildren();
   attachmentUrls.clear();messageRows.clear();renderedScope='';
   $('auth-view').hidden = !!next; $('app-view').hidden = !next;
@@ -1274,13 +1274,13 @@ selectChannel=async channel=>{
   if(channel.community_id&&activeCommunity!==channel.community_id){activeCommunity=channel.community_id;if(!await loadCommunityAccess())return;}
   if(intent!==navigationEpoch||channel.community_id&&activeCommunity!==channel.community_id)return;
   replyTarget=null;$('reply-banner').classList.add('hidden');
-  await baseSelect(channel);navigation(!!channel.private);renderCommunityRail();rememberCommunity();
+  await baseSelect(channel);syncVoiceChat().catch(error=>toast(errorText(error)));navigation(!!channel.private);renderCommunityRail();rememberCommunity();
   $('message-input').placeholder=channel.private?'Mensagem para '+channel.name:'Conversar em #'+channel.name;
   $('private-call').hidden=!channel.private||channel.kind==='voice';
   $('message-form').hidden=!!channel.is_announcement&&!hasCommunityPermission('manage_messages');
 };
 const baseShowFriends=showFriends;
-showFriends=()=>{baseShowFriends();navigation(true);};
+showFriends=()=>{baseShowFriends();voiceChat?.update();navigation(true);};
 $('friends-nav').onclick=showFriends;$('friends-shortcut').onclick=showFriends;
 function updateFounders(){
   const names=siteRoles.filter(r=>r.role==='creator').map(r=>person(r.user_id).display_name);
@@ -1795,5 +1795,10 @@ async function jumpToReply(id){
  if(session?.user.id!==user||selected?.id!==target.id||generation!==version)return;if(!root)throw Error('A mensagem não está mais disponível.');messages.set(root.id,root);renderMessages();requestAnimationFrame(()=>{if(generation!==version)return;const node=document.querySelector('[data-message-id="'+CSS.escape(root.id)+'"]');node?.scrollIntoView({block:'center'});node?.classList.add('message-target');});
 }
 
-const lulaContext={el,button,toast,checked,showDialog,apiFetch,person,state:()=>({db,session,room})};
-async function loadLuladroid(target,channel){const user=session?.user.id;const module=await(lulaTask||=import('./luladroid.js'));if(room!==target||session?.user.id!==user)return;lulaController?.stop();lulaController=module.initLuladroid(lulaContext,target,(channel.private?'direct-':'channel-')+channel.id);}
+const lulaContext={el,button,toast,checked,showDialog,apiFetch,person,state:()=>({db,session,room}),mount:()=>voiceChat.mount,openChat:()=>voiceChat.open(),refreshChat:()=>voiceChat.refresh()};
+async function loadLuladroid(target,channel){const user=session?.user.id;await syncVoiceChat(true);const module=await(lulaTask||=import('./luladroid.js'));if(room!==target||session?.user.id!==user)return;lulaController?.stop();lulaController=module.initLuladroid(lulaContext,target,(channel.private?'direct-':'channel-')+channel.id);}
+
+async function syncVoiceChat(force=false){
+ if(!voiceChatTask&&(force||selected?.kind==='voice'))voiceChatTask=import('./voice-chat.js').then(module=>voiceChat=module.initVoiceChat({el,button,checked,toast,person,state:()=>({db,session,selected,home,room,callChannel})})).catch(error=>{voiceChatTask=null;throw error;});
+ if(voiceChatTask){await voiceChatTask;voiceChat.update();}
+}

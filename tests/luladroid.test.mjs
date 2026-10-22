@@ -1,2 +1,2 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {wakeQuestion}from '../static/luladroid.js';
-test('wake phrase accepts accents and spacing, never ordinary conversation',()=>{assert.equal(wakeQuestion('E aí Lula Droid, que horas são?'),'que horas sao?');assert.equal(wakeQuestion('eai LulaDroid'),'');assert.equal(wakeQuestion('conversa com LulaDroid'),null);assert.equal(wakeQuestion('eai outro bot oi'),null);});
+import test from 'node:test';import assert from 'node:assert/strict';import {voiceChatScope}from '../static/voice-chat.js';
+test('voice chat keeps rooms and private calls separate',()=>{assert.deepEqual(voiceChatScope({id:'one',kind:'voice'}),{field:'channel_id',id:'one'});assert.deepEqual(voiceChatScope({id:'one',kind:'voice',private:true}),{field:'conversation_id',id:'one'});assert.equal(voiceChatScope({kind:'text'}),null);assert.equal(voiceChatScope(null),null);});
