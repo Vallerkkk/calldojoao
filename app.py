@@ -20,6 +20,11 @@ from videochamada import configured as videochamada_configured
 
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / '.env')
+
+DEFAULT_GEMINI_KEY = ''
+DEFAULT_GEMINI_PROJECT = '735777445484'
+
+
 @asynccontextmanager
 async def lifespan(application):
     async with new_client() as client:
@@ -59,16 +64,18 @@ async def headers(request, call_next):
 def config():
     s = settings()
     ready = bool(s['SUPABASE_URL'] and s['SUPABASE_PUBLISHABLE_KEY'])
+    gemini_key = os.getenv('GEMINI_API_KEY', '').strip() or DEFAULT_GEMINI_KEY
+    gemini_project = os.getenv('GEMINI_PROJECT', '').strip() or DEFAULT_GEMINI_PROJECT
     return {'supabaseUrl': s['SUPABASE_URL'],
             'supabaseKey': s['SUPABASE_PUBLISHABLE_KEY'],
             'configured': ready,
             'videochamadaConfigured': videochamada_configured(),
             'storageConfigured': True, 'uploadLimit': 26214400,
-            'pushPublicKey': os.getenv('VAPID_PUBLIC_KEY',''),
-            'pushConfigured': all(os.getenv(k) for k in ('VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY','PUSH_TRANSPORT_KEY')),
+            'pushPublicKey': os.getenv('VAPID_PUBLIC_KEY', ''),
+            'pushConfigured': all(os.getenv(k) for k in ('VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'PUSH_TRANSPORT_KEY')),
             'callsConfigured': all(s[k] for k in ('LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET')),
-            'geminiApiKey': os.getenv('GEMINI_API_KEY', 'AQ.Ab8RN6LwIVMnELQD7LmloIbFn9gK3bu5MAgVV8Lmc1T6xOsRPA'),
-            'geminiProject': os.getenv('GEMINI_PROJECT', '735777445484'),
+            'geminiConfigured': bool(gemini_key),
+            'geminiProject': gemini_project,
             'luladroidEnabled': True}
 
 
@@ -142,17 +149,17 @@ def make_token(user, room_name, can_publish=True, stage=False, moderator=False):
         .with_identity(user['id']).with_name(name).with_ttl(timedelta(minutes=10))
         .with_grants(api.VideoGrants(room_join=True, room=room_name,
             can_publish=can_publish, can_subscribe=True, can_publish_data=True)).to_jwt())
-    return JSONResponse({'url': s['LIVEKIT_URL'], 'token': token, 'canPublish':can_publish, 'stage':stage, 'moderator':moderator})
+    return JSONResponse({'url': s['LIVEKIT_URL'], 'token': token, 'canPublish': can_publish, 'stage': stage, 'moderator': moderator})
 
 
-@app.api_route('/healthz', methods=['GET','HEAD'])
+@app.api_route('/healthz', methods=['GET', 'HEAD'])
 async def healthz():
-    return {'status':'ok', 'service':'orbita'}
+    return {'status': 'ok', 'service': 'orbita'}
 
 
 @app.get('/sw.js')
 async def service_worker():
-    return FileResponse(ROOT / 'static' / 'service-worker.js', media_type='application/javascript', headers={'Service-Worker-Allowed':'/'})
+    return FileResponse(ROOT / 'static' / 'service-worker.js', media_type='application/javascript', headers={'Service-Worker-Allowed': '/'})
 
 
 @app.get('/')
@@ -162,19 +169,19 @@ def index():
 
 @app.get('/instalar')
 def install_page():
-    return FileResponse(ROOT / 'static' / 'install.html', headers={'Cache-Control':'no-store'})
+    return FileResponse(ROOT / 'static' / 'install.html', headers={'Cache-Control': 'no-store'})
 
 
 @app.get('/baixar/Orbita-Windows.zip')
 def download_launcher():
     return RedirectResponse('https://github.com/Vallerkkk/calldojoao/releases/download/v1.0.2/Orbita-1.0.2-x64.zip',
-        status_code=302, headers={'Cache-Control':'no-store'})
+        status_code=302, headers={'Cache-Control': 'no-store'})
 
 
 @app.get('/baixar/Orbita-Setup.exe')
 def download_desktop_installer():
     return RedirectResponse('https://github.com/Vallerkkk/calldojoao/releases/download/v1.0.2/Orbita-Setup-1.0.2-x64.exe',
-        status_code=302, headers={'Cache-Control':'no-store'})
+        status_code=302, headers={'Cache-Control': 'no-store'})
 
 
 install(app, current_user, settings, make_token)

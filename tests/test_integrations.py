@@ -37,3 +37,23 @@ class IntegrationTests(unittest.TestCase):
  def test_google_credentials_are_not_exposed(self):
   with patch.dict(os.environ,{'GOOGLE_CLIENT_SECRET':'do-not-disclose','GOOGLE_DRIVE_REFRESH_TOKEN':'never-return-token'}):response=self.client.get('/api/config')
   self.assertNotIn('do-not-disclose',response.text);self.assertNotIn('never-return-token',response.text)
+
+
+class GeminiSecretTests(unittest.TestCase):
+ def test_config_does_not_expose_gemini_key(self):
+  with patch.dict(os.environ, {'GEMINI_API_KEY': 'private-gemini-test-secret'}):
+   response = TestClient(app.app).get('/api/config')
+  self.assertNotIn('private-gemini-test-secret', response.text)
+  self.assertNotIn('geminiApiKey', response.json())
+  self.assertTrue(response.json()['geminiConfigured'])
+
+ def test_gemini_requires_server_configuration(self):
+  app.app.dependency_overrides[app.current_user] = lambda: ({'id': USER}, {})
+  try:
+   with patch.dict(os.environ, {'GEMINI_API_KEY': ''}):
+    client = TestClient(app.app)
+    for route, payload in [('analyze', {'prompt': 'ola'}), ('tts', {'text': 'ola'})]:
+     response = client.post('/api/ai/luladroid/' + route, json=payload)
+     self.assertEqual(response.status_code, 503)
+  finally:
+   app.app.dependency_overrides.clear()
