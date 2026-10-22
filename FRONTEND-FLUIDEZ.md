@@ -28,7 +28,7 @@ O pacote **Orbita-front-end-fluido.zip** contém o projeto completo atualizado, 
 
 Os arquivos completos pequenos e os trechos dos arquivos grandes estão em **Trechos-e-arquivos-front-end.md**, em blocos de código com os caminhos. Para os arquivos grandes, os trechos são diffs com linhas de origem e destino e contexto; os arquivos completos correspondentes estão no ZIP. Não é necessário colar trechos manualmente na pasta que já foi atualizada.
 
-Mudanças de produção: static/app.js, static/enhancements.js, static/index.html, static/service-worker.js; novos static/chat-state.js, static/dom-utils.js e static/fluency.css. index.html e orbita.html permanecem cópias do ponto de entrada estático. Testes foram ampliados sem instalar bibliotecas novas.
+Mudanças de produção: static/app.js, static/enhancements.js, static/index.html, static/service-worker.js; novos static/chat-state.js, static/dom-utils.js e static/fluency.css. O ponto de entrada editável é static/index.html; as cópias antigas da raiz foram removidas. Testes foram ampliados sem instalar bibliotecas novas.
 
 **Backend, dependências e banco não foram alterados. Não execute os schemas ou as migrações antigas para esta atualização.** Nenhum recurso pago foi ativado.
 
